@@ -91,6 +91,10 @@ Whenever changing driver architecture, verify this property explicitly.
 
 Input data may be assumed to be available as Pandas DataFrames.
 
+The source data are stored at **individual employee-month level**, but the decomposition model is **not employee-level**. Employee records are inputs used to construct aggregated period-level workforce states such as workforce exposure, contract mix, regional mix, grade composition within region, and region × grade salary levels.
+
+Do not run SHAP directly over employees or interpret the sum of employee-level attributions as workforce-composition effects unless explicitly requested.
+
 Data acquisition from source systems is outside the scope of this repository unless explicitly requested.
 
 # Validation requirements

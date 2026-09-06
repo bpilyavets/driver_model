@@ -93,7 +93,83 @@ Such variables must be grouped into one driver or derived inside the cost engine
 
 ---
 
-# 4. Workforce hierarchy
+# 4. Level of source data vs level of decomposition
+
+The raw analytical dataset is stored at the **individual employee-month level**.
+
+This granularity is necessary because employee-level records contain the information required to reconstruct:
+
+* employment type;
+* workforce exposure;
+* region;
+* grade;
+* base salary;
+* regional salary coefficient;
+* worked hours;
+* bonus/KPI variables;
+* overtime;
+* holiday pay;
+* and other payroll components.
+
+However, the Shapley decomposition itself is **not performed at employee level**.
+
+Employee-level observations are first aggregated into a **period-level workforce state** containing economically meaningful business objects such as:
+
+$$
+N,\quad
+P(ContractType),\quad
+P(R),\quad
+P(G\mid R),\quad
+\mu_{GR},\quad
+\ldots
+$$
+
+The attribution game operates on changes in these aggregate workforce-state drivers between periods A and B.
+
+The intended pipeline is therefore:
+
+```text
+employee-month records
+        ↓
+aggregate / derive workforce state
+        ↓
+period-A state vs period-B state
+        ↓
+counterfactual cost engine
+        ↓
+Shapley decomposition
+```
+
+This distinction is methodologically important.
+
+For example, the business concept:
+
+> grade composition effect
+
+is **not** equal to the sum of grade changes made by individual employees.
+
+Grade composition may change because:
+
+* existing employees are promoted or demoted;
+* higher-grade employees leave;
+* lower-grade employees are hired;
+* different grades enter/leave at different rates.
+
+Therefore composition effects must be defined through changes in the aggregate workforce distribution rather than through employee-level attribution.
+
+Employee identity may still be used for:
+
+* constructing period-level states;
+* reconciliation;
+* diagnostics;
+* identifying joiners/leavers;
+* validating payroll logic.
+
+But employee identity is not itself a SHAP player in the primary workforce-cost decomposition.
+
+---
+
+# 5. Workforce hierarchy
 
 The workforce contains three employment types:
 
@@ -155,13 +231,14 @@ Do not expose the three shares as independently switchable SHAP features.
 
 ---
 
-# 5. Permanent workforce model
+# 6. Permanent workforce model
 
 Permanent employee economics are decomposed further.
 
 The exact payroll formula will evolve, but currently contains concepts such as:
 
 * base salary;
+* regional adjustment;
 * regional adjustment;
 * worked-hours/exposure;
 * grade composition;
@@ -175,30 +252,71 @@ The permanent cost engine must be extensible rather than hard-coded around the c
 
 ---
 
-# 6. Regional salary rule
+# 7. Base salary and component-level regional adjustment
 
 Region has a deterministic business-rule coefficient.
 
-For employee \(i\):
+Base salary is a separate pre-regional input. The canonical employee-month DataFrame
+supplies it directly as `base_salary`; no multiply/divide round trip is needed.
+For employee \(i\), the relationship to regionalized salary is:
 
 $$
-ObservedSalary_i
+RegionalizedSalary_i
 =
-PreRegionalSalary_i
+BaseSalary_i
 \times R_{r(i)}
 $$
 
 where \(R_r\) is the official coefficient for region \(r\).
 
-Therefore:
+Only when a source supplies salary that already includes regional adjustment is
+normalization needed:
 
 $$
-PreRegionalSalary_i
+BaseSalary_i
 =
-\frac{ObservedSalary_i}{R_{r(i)}}.
+\frac{RegionalizedSalary_i}{R_{r(i)}}.
 $$
 
-Regional coefficient values belong inside the payroll/cost logic.
+The same rule applies to other eligible payroll components. In the current PoC,
+salary, sick-leave pay, and holiday pay receive the coefficient. Their canonical
+input amounts are pre-regional currency per full exposure. Bonus/KPI and overtime
+remain explicitly unadjusted under the illustrative payroll assumptions.
+
+For permanent unit cost, the implemented formula is:
+
+$$
+c_P = \sum_{r,g}p_rp_{g\mid r}
+\left[R_r(\mu_{rg}h^*_{rg}+Sick_{rg}+Holiday_{rg})
++BonusKPI_{rg}+Overtime_{rg}\right].
+$$
+
+Here \(\mu\) is exposure-weighted pre-regional base salary, and \(h^*\) is the
+salary-weighted worked-time fraction within a region × grade cell:
+
+$$
+\mu=\frac{\sum_i e_i B_i}{\sum_i e_i},\qquad
+h^*=\frac{\sum_i e_i B_i h_i}{\sum_i e_i B_i}.
+$$
+
+This preserves the employee-level salary/time product during aggregation. The
+worked-hours driver can therefore include changes in within-cell salary/time
+association; it is not a pure causal hours effect.
+
+Declare `apply_regional_coefficient` on each registered payroll contribution,
+including salary. The cost engine applies the destination region's coefficient
+once to eligible contributions. Sharing a multiplier does not merge the payment
+drivers or regional composition into one SHAP player.
+
+For already-regionalized source amounts, explicitly identify the eligible columns
+to `normalize_regional_inputs` before building states. The helper divides them by
+their source-region coefficient before aggregation and fallback; it never infers
+their basis or changes the actual `source_cost`. Apply normalization once. The
+confirmed mock's base salary, sick leave, and holiday pay are all pre-regional and
+map directly to canonical inputs.
+
+Regional coefficient values belong inside the payroll/cost logic. Changing the
+coefficient schedule between A/B is outside this PoC and fails explicitly.
 
 If coefficient policy itself does not change between periods, regional coefficients are not a changing SHAP driver.
 
@@ -206,14 +324,14 @@ The relevant changing driver is the distribution of workforce across regions.
 
 ---
 
-# 7. Grade and salary identification
+# 8. Grade and salary identification
 
 Grades determine permitted salary ranges, but employees can occupy different positions within those ranges.
 
 The available dataset contains:
 
 * grade;
-* observed base salary;
+* pre-regional base salary (or regionalized source salary normalized as above);
 * region;
 * regional coefficient.
 
@@ -243,7 +361,7 @@ Instead use observable workforce-composition and within-cell salary components.
 
 ---
 
-# 8. Region-first composition parameterization
+# 9. Region-first composition parameterization
 
 Represent the joint region × grade distribution as:
 
@@ -293,11 +411,10 @@ Do not expose individual grade shares as independent features.
 
 ## Underlying salary level
 
-For each employee remove the deterministic regional multiplier:
+Use each employee's canonical pre-regional base salary directly:
 
 $$
-B_i=
-\frac{ObservedSalary_i}{R_{r(i)}}.
+B_i=BaseSalary_i.
 $$
 
 Then define:
@@ -308,7 +425,9 @@ $$
 E[B_i\mid G=g,R=r].
 $$
 
-This is a region × grade matrix.
+This is a region × grade matrix. The notebook labels this driver
+**Within-region/grade salary level** and retains the state key `underlying_salary_level`. Means are weighted by
+employee-month exposure in the implemented workforce state.
 
 Call this driver something such as:
 
@@ -333,7 +452,7 @@ It contains unidentifiable within-cell effects such as:
 
 ---
 
-# 9. Salary composition identity
+# 10. Salary composition identity
 
 A simplified average base-salary component for permanent staff is:
 
@@ -394,7 +513,7 @@ The fixed regional coefficient remains a deterministic parameter inside the func
 
 ---
 
-# 10. Workforce states
+# 11. Workforce states
 
 Historical data should first be transformed into a period-level workforce state.
 
@@ -432,7 +551,7 @@ Important properties:
 
 ---
 
-# 11. Driver registry
+# 12. Driver registry
 
 Business-driver definitions should be centralized.
 
@@ -442,13 +561,15 @@ The exact implementation is flexible, but adding a driver should ideally require
 * label;
 * level / parent;
 * state value builder or state key;
+* payroll cost contribution, where applicable;
+* whether that contribution receives the regional coefficient;
 * optionally validation/fallback behavior.
 
 The generic SHAP engine should discover the applicable drivers from this registry rather than duplicating hard-coded driver lists throughout the codebase.
 
 ---
 
-# 12. SHAP switch game
+# 13. SHAP switch game
 
 For a decomposition between states \(A\) and \(B\), expose one synthetic binary feature per business driver:
 
@@ -471,7 +592,7 @@ For small driver sets, exact Shapley enumeration is preferred.
 
 ---
 
-# 13. Hierarchical decomposition
+# 14. Hierarchical decomposition
 
 Run two logical games.
 
@@ -508,7 +629,7 @@ Those impacts must be propagated back into total-cost currency without arbitrari
 
 ---
 
-# 14. Permanent exposure multiplier
+# 15. Permanent exposure multiplier
 
 The top-level model is linear in permanent unit cost:
 
@@ -550,7 +671,7 @@ This allows the parent `permanent_unit_cost` line to be replaced by its detailed
 
 ---
 
-# 15. Sparse and unsupported cells
+# 16. Sparse and unsupported cells
 
 Historical workforce data may not populate every region × grade cell in both periods.
 
@@ -578,6 +699,14 @@ A possible hierarchy is:
 
 The exact policy is configurable.
 
+Fallbacks for regionally eligible salary/payment components operate in pre-regional
+currency per exposure. Normalize any already-adjusted source amounts before pooling
+across regions, then apply the destination region's coefficient only in the cost
+engine. Do not pool regionalized pay from different regions as if it were base pay.
+Unadjusted payment fallbacks are currency per exposure; worked-time factors and
+distribution fallbacks are dimensionless. Referenced permanent unit costs and
+contract reimbursements are all-in currency per exposure.
+
 Every fallback use must be captured in a diagnostics table with at least:
 
 ```text
@@ -593,7 +722,7 @@ Unsupported categories and potentially dubious counterfactuals should be visible
 
 ---
 
-# 16. Required validation
+# 17. Required validation
 
 ## Cost reconciliation
 
@@ -653,7 +782,7 @@ Do not proceed silently with invalid distributions.
 
 ---
 
-# 17. Reporting
+# 18. Reporting
 
 The main result should be a table approximately containing:
 
@@ -690,9 +819,29 @@ reconciliation_error
 
 A simple waterfall chart is useful but secondary to numerical correctness.
 
+Identify the dataset, A/B periods, employee counts, permanent employee counts, and
+exposure beside each result. Synthetic demonstration outputs must be distinguishable
+from the supplied mock and from extensions of the synthetic payroll.
+
+Accompany the salary impact with a region × grade cell audit: counts, pre-regional
+salary means, observed/fallback provenance, and contributions in permanent-unit and
+total-cost currency. Use the same Shapley coalition weights and exposure multiplier.
+This diagnostic splits the existing salary player's marginal by cell additivity;
+it does not add cells or employees as new players. Assert that cell marginals sum
+to the complete salary switch in each coalition and reconcile to its SHAP impact.
+Report both net and absolute-impact shares by observed/imputed support, using
+undefined shares for zero denominators. Support shares are not uncertainty bounds.
+
+Separately report base-salary changes for IDs that are permanent in both periods,
+including whether their region/grade changed, and entries/exits from the permanent
+sample. These descriptive counts and records are not additional bridge impacts or
+a causal pay-raise estimate. Being absent from one period does not establish a hire
+or termination date. Hiring/attrition of differently paid people within a cell may
+change the workforce-state salary driver even when matched employees have no raises.
+
 ---
 
-# 18. Interpretation
+# 19. Interpretation
 
 The bridge is an accounting / analytical attribution, not necessarily a causal decomposition.
 
@@ -720,7 +869,7 @@ Use labels consistent with what is actually observed and identified.
 
 ---
 
-# 19. Future optimization
+# 20. Future optimization
 
 The future planning problem may look like:
 
