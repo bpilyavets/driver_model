@@ -127,3 +127,46 @@ cost(state)
 for constrained optimization.
 
 Do not implement an optimizer unless explicitly requested.
+
+# Team-aware payroll and attribution requirements
+
+* Source grain remains one employee-month with exactly one recorded team. Sharing bonuses
+  belong to that team. Employee IDs and team transfers are diagnostics, never SHAP players.
+* Use the organizational hierarchy `N * sum(team_share * team_unit_cost)`, four-player
+  nested team-unit games, and separate permanent games. Local team bridges first split
+  local scale and unit economics; never combine their rows with organizational impacts.
+* Switch complete team, contract and region vectors and complete conditional-grade
+  matrices atomically. Align region/grade axes within each team across A/B.
+* Keep sparse fallback within the same team and period: cell → grade → region → team
+  permanent population. Missing teams/categories require explicit references; never
+  silently pool other teams, carry other-period economics or fill unknown salary with zero.
+* Propagate with auxiliary 0→1 multipliers M (organization/team), K (team/permanent), and
+  L (local/team). Assert their analytical values and parent replacement at every level.
+  Never divide by a parent's observed change. Preserve zero-change offsetting-child tests.
+* The reduced three-player organizational term games are exact by Shapley additivity and
+  dummy invariance. Retain a full-outer-enumeration equivalence test. Exact permanent games
+  currently have 13 drivers; the supported PoC maximum is 14, including the extension.
+* Production mappings and the full employee payroll formula are requirements in section 21
+  and section 6 of the methodology. Production contracts are ТК/ГПД/ПКЦ; only the legacy
+  adapter accepts ГПХ. Use gpd_pay/pkc_pay for the corresponding contract payroll.
+* Production exposure is one. vyrabotka_percent is a nonnegative fraction, possibly above
+  one. Do not add a second availability multiplier to employee-month payments. Canonical
+  non-unit exposure requires unit-normalized monetary inputs.
+* Regional coefficients apply once to salary, sick leave, vacation, holiday, night shift,
+  sharing and quarterly pay. KPI, overtime and other bundled pay are unadjusted. Declare
+  eligibility and payroll contributions in the registry. Normalize explicitly identified
+  already-regionalized values before aggregation/fallback and preserve actual source_cost.
+* Coefficient bands are not identified geography. Fixed policy is an explicit assumption;
+  reject inconsistent supplied A/B schedules. The source coefficient alone cannot reveal
+  whether a change was policy or a move between bands.
+* Keep the salary label Within-team/region/grade salary level and salary-weighted hours.
+  Preserve salary cell-impact/provenance audits, net/absolute support summaries and matched
+  ID diagnostics that distinguish team transfers from organization sample entries/exits.
+* Night shift is now standard. Demonstrate a new transport allowance through one source
+  payroll addition and one registration, with no special cases in unrelated pipeline code.
+* Label reconstructed permanent references separately from independent actual/generated
+  payroll. Retain the legacy mock totals 494,716.700 and 625,148.125. Production inputs are
+  DataFrames; CSV parsing is optional and confined to the legacy adapter.
+* Execute the notebook from fresh kernels with and without the CSV. Save outputs and show
+  reconciliation, invalid-input/counterfactual checks and runtime. Use rtol=1e-10 and
+  atol=1e-6 for costs without rounding intermediate calculations.
