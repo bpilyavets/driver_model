@@ -1,16 +1,23 @@
-# Labor-cost decomposition PoC
+# Labor-cost analysis — bring your own DataFrame
 
-Open [labor_cost_decomposition.ipynb](labor_cost_decomposition.ipynb) for the executed,
-standalone demonstration. Analytical requirements are in
-[the methodology](docs/labor-cost-decomposition.md); agent instructions are in `AGENTS.MD`.
+Open [labor_cost_decomposition.ipynb](labor_cost_decomposition.ipynb), load your
+employee-month DataFrame, and edit **Your data and settings**:
 
-The notebook builds workforce states from employee-month Pandas DataFrames. It explains
-organization-wide cost changes through workforce scale, team mix and nested team economics,
-then supplies separate local team bridges. Local bridges reconcile each team's own cost
-change; organizational team contributions allocate scale interactions differently.
-**Do not combine rows from these two views.**
+```python
+input_df = production_df
+period_a = "2026-01"
+period_b = "2026-02"
+source_cost_column = None
+```
 
-## Run
+Then **Run All**. The notebook shows the organizational bridge, team summary,
+validation and missing-economics assumptions. Set `selected_team` to a team name
+for its local bridge; enable `show_detailed_diagnostics` for salary/fallback audits.
+There is no synthetic data generation or CSV loading. Ingestion is yours to supply.
+Without configured input, the notebook displays setup guidance rather than running
+an example. All implementation functions remain inside collapsible notebook cells.
+
+## Setup
 
 Use Python 3.10 or a compatible environment:
 
@@ -18,80 +25,105 @@ Use Python 3.10 or a compatible environment:
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-python -m jupyter nbconvert --to notebook --execute --inplace \
-  --ExecutePreprocessor.timeout=600 labor_cost_decomposition.ipynb
+python -m ipykernel install --user --name labor-cost-poc
 ```
 
-On Debian/Ubuntu, virtual-environment creation requires `python3-venv`. For interactive use,
-select that environment in a Jupyter-compatible editor, or install `jupyterlab` and run
-`python -m jupyter lab`. Section 14 prints measured execution time and the final validation
-review. Exact permanent games enumerate 8,192 coalitions each; the extension enumerates
-16,384. The limit is 14 drivers per game, intended for small team sets (up to about 10).
+Select that environment in your Jupyter-compatible editor. On Debian/Ubuntu,
+creating a virtual environment requires `python3-venv`. JupyterLab is optional;
+install it separately if your editor does not provide a notebook interface.
 
-The main example generates deterministic **SYNTHETIC** production-shaped data for three
-teams, with different trends, team transfers, composition changes and sparse cells. It
-needs no input file. Source payroll is calculated independently from employee records.
-The supplementary `costs_poc.csv` adapter runs only if the fixture exists.
+## Input rules
 
-## Production inputs and payroll
+The complete mapping appears near the top of the notebook and in
+[methodology section 21](docs/labor-cost-decomposition.md#21-production-schema-signed-values-and-notebook-workflow).
+Keep the production names, including `mdm_employee_rk_hash`,
+`lvl7_mapped_management_unit_nm` and `motivation_type` (ТК/ГПД/ПКЦ).
+Temporary and outsourced payroll use `gpd_pay` and `pkc_pay`.
 
-After executing the function definitions, use the production DataFrame adapter:
+- One employee-month row, with one recorded team; month-start periods.
+- Payment components and payroll totals may be negative. Applicable values must
+  still be numeric, finite and present. Inapplicable values may be null.
+- `base_stavka` and `reg_coef` must be positive. `vyrabotka_percent` is nonnegative:
+  0.8 means 80%, and values above one are allowed.
+- Eligible payment amounts are pre-regional. Salary, sick leave, vacation, holiday,
+  night shift, sharing and quarterly pay receive the coefficient once. KPI,
+  overtime and other bundled pay are unadjusted.
+- Production exposure is one. Do not add another availability multiplier.
+
+If you have an independent employee-month total, set `source_cost_column` to its
+column name. Otherwise permanent payroll is reconstructed and labeled accordingly;
+its reconciliation verifies aggregation, not independent payroll completeness.
+Negative independent totals must still be explained by their components.
+
+## Missing contracts and teams
+
+The default `missing_economics = "carry_observed"` does the following:
+
+| Situation | Handling |
+|---|---|
+| Contract category observed in one month | Use that same team's observed rate in both months. |
+| Permanent category observed in one month | Copy its complete permanent state. |
+| Whole team appears or disappears | Copy its unit economics, retaining zero workforce share in the absent month. |
+| Category inactive in both states | Skip its economics; do not invent a rate or salary matrix. |
+
+Copied economics have zero rate-change impact **by assumption**. The notebook
+reports the missing period, donor period and affected economics. Explicit references
+can override missing economics; `"require_reference"` restores strict handling of
+one-sided absence. Neither policy fills missing pay for existing employees.
+Reference formats are documented in [the methodology](docs/labor-cost-decomposition.md#16-sparse-support-and-automatic-missing-economics-completion).
+
+Sparse cells within an observed permanent population still use same-period,
+same-team fallback: cell → grade → region → team permanent population. Coefficient
+bands are not identified geography. Regional-policy changes remain outside scope.
+
+## Reading and reusing results
 
 ```python
-frame = adapt_production(production_df, source_cost_column=None)
-policy = make_policy(frame)  # Supply the selected A/B observations.
-a, fallback_a, coverage_a = build_state(frame, PERIOD_A, policy)
-b, fallback_b, coverage_b = build_state(frame, PERIOD_B, policy)
-result = decompose(a, b, dataset="Production — reconstructed permanent reference")
-report(frame, a, b, result)
+analysis["bridge"]          # Organizational leaf impacts.
+analysis["local_bridges"]   # Local bridges indexed by team name.
+analysis["team_summary"]    # Team endpoints and the two reporting views.
+analysis["assumptions"]     # Inactive, copied or referenced economics.
+analysis["validation"]      # Detailed pass/error records.
+analysis["diagnostics"]     # Salary, fallback and matched-employee audits.
 ```
 
-The complete production mapping is displayed in notebook section 3 and methodology section
-21. `motivation_type` maps ТК/ГПД/ПКЦ; temporary and outsourced payroll use `gpd_pay` and
-`pkc_pay`. Each employee-month has one team, and sharing bonuses stay with that recorded
-team. Production exposure is one; `vyrabotka_percent=0.8` means 80%, with values above one
-allowed. There is no additional availability multiplier in the production employee formula.
+Organizational and local bridges allocate scale interactions differently: do not
+add their rows together. Signed payroll explains the recorded month, including
+reversals. The within-team/region/grade salary driver includes changing cell
+membership and team transfers, not only individual raises.
 
-Salary, sick leave, vacation, holiday, night shift, sharing and quarterly pay are pre-regional
-inputs and receive the coefficient once. KPI, overtime and other bundled pay are unadjusted.
-KPI is already realized; quarterly bonuses enter the recorded month. Salary/time aggregation
-uses salary-weighted worked-time factors to preserve payroll exactly.
+For programmatic use after loading the notebook's implementation cells:
 
-An optional independent `source_cost_column` covers every employee-month. Otherwise permanent
-payroll is reconstructed and labeled accordingly; reconciliation then tests aggregation,
-not independent payroll completeness. Missing applicable production amounts are errors.
+```python
+analysis = analyze_labor_cost(
+    production_df,
+    "2026-01",
+    "2026-02",
+    source_cost_column=None,
+)
+report(analysis)
+```
 
-For explicitly identified eligible amounts that already contain regional adjustment, call
-`normalize_regional_inputs(frame, already_regionalized=(...))` once before building states.
-It preserves actual source costs. Coefficient bands (`region_1.15`, etc.) do not identify
-physical geography; fixed regional policy is an assumption, separate from band composition.
+Use `help(analyze_labor_cost)` or other function docstrings for contracts and units.
+Exact permanent games enumerate 8,192 coalitions for 13 drivers; the maximum is
+14. The PoC remains intended for small team sets. `cost(state)` works independently
+of comparison and SHAP, with explicit economics required for positive-share
+categories. No optimizer or ingestion infrastructure is included.
 
-## Missing support and interpretation
+## Development checks
 
-Sparse fallback stays inside the same team and period: cell → grade → region → team permanent
-population. Missing regions use that team's marginal grade distribution. Unknown salaries
-are never replaced by zero. Missing teams or contract categories require explicit references
-through `references[(period, team)]`; methodology section 16 documents the reference shapes.
-Coverage, every fallback value, and unsupported counterfactual exposure are reported.
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest
+```
 
-The **Within-team/region/grade salary level** driver includes changes in cell membership,
-including team transfers, not only individual raises. Salary cell audits reconcile to SHAP
-and show observed/imputed support in both reporting currencies. Matched-ID diagnostics show
-salary changes and distinguish transfers from organization sample entries/exits.
+Tests load the notebook's tagged implementation cells as the single source of
+production logic. Small test fixtures, signed/counterfactual cases and a new-driver
+extension live in `tests/`; they do not run in the user workflow. The suite checks
+PEP-8 style and function/class docstrings as well as analytical reconciliation.
 
-The legacy fixture uses one mock team and its narrower recorded payroll. Its pre-regional
-base salary, sick leave and holiday values reconstruct **494,716.700 in January** and
-**625,148.125 in February**. Legacy ГПХ maps to temporary only in this adapter. Other components
-are explicitly unavailable in the fixture. Five matched permanent IDs have unchanged base
-salary; use the mock's salary cell audit to understand composition and fallback effects.
-
-## Extensibility and planning
-
-Section 13 adds a regionally adjusted transport allowance with one source-data/payroll
-addition and one registry entry. State builders, costing, exact SHAP, propagation, reporting,
-diagnostics and waterfalls discover it automatically. Night-shift pay is now standard payroll.
-
-`permanent_cost(state)`, `team_unit_cost(state)` and `cost(workforce_state)` work without
-historical comparison or SHAP. Future planning could vary workforce size, team shares and
-within-team contract/region/grade mixes under staffing and service constraints. No optimizer
-or production infrastructure is implemented.
+Fresh-kernel tests require local Jupyter socket access. To run only non-kernel
+checks in a restricted environment, use `python -m pytest -m "not kernel"`.
+Kernel tests execute a temporary copy both unconfigured and with a test DataFrame;
+the delivered notebook remains free of stored payroll outputs. Cost tolerances
+are `rtol=1e-10`, `atol=1e-6`, without intermediate rounding.

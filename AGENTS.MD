@@ -130,43 +130,68 @@ Do not implement an optimizer unless explicitly requested.
 
 # Team-aware payroll and attribution requirements
 
-* Source grain remains one employee-month with exactly one recorded team. Sharing bonuses
-  belong to that team. Employee IDs and team transfers are diagnostics, never SHAP players.
-* Use the organizational hierarchy `N * sum(team_share * team_unit_cost)`, four-player
-  nested team-unit games, and separate permanent games. Local team bridges first split
-  local scale and unit economics; never combine their rows with organizational impacts.
-* Switch complete team, contract and region vectors and complete conditional-grade
-  matrices atomically. Align region/grade axes within each team across A/B.
-* Keep sparse fallback within the same team and period: cell → grade → region → team
-  permanent population. Missing teams/categories require explicit references; never
-  silently pool other teams, carry other-period economics or fill unknown salary with zero.
-* Propagate with auxiliary 0→1 multipliers M (organization/team), K (team/permanent), and
-  L (local/team). Assert their analytical values and parent replacement at every level.
-  Never divide by a parent's observed change. Preserve zero-change offsetting-child tests.
-* The reduced three-player organizational term games are exact by Shapley additivity and
-  dummy invariance. Retain a full-outer-enumeration equivalence test. Exact permanent games
-  currently have 13 drivers; the supported PoC maximum is 14, including the extension.
-* Production mappings and the full employee payroll formula are requirements in section 21
-  and section 6 of the methodology. Production contracts are ТК/ГПД/ПКЦ; only the legacy
-  adapter accepts ГПХ. Use gpd_pay/pkc_pay for the corresponding contract payroll.
-* Production exposure is one. vyrabotka_percent is a nonnegative fraction, possibly above
-  one. Do not add a second availability multiplier to employee-month payments. Canonical
-  non-unit exposure requires unit-normalized monetary inputs.
-* Regional coefficients apply once to salary, sick leave, vacation, holiday, night shift,
-  sharing and quarterly pay. KPI, overtime and other bundled pay are unadjusted. Declare
-  eligibility and payroll contributions in the registry. Normalize explicitly identified
-  already-regionalized values before aggregation/fallback and preserve actual source_cost.
-* Coefficient bands are not identified geography. Fixed policy is an explicit assumption;
-  reject inconsistent supplied A/B schedules. The source coefficient alone cannot reveal
-  whether a change was policy or a move between bands.
-* Keep the salary label Within-team/region/grade salary level and salary-weighted hours.
-  Preserve salary cell-impact/provenance audits, net/absolute support summaries and matched
-  ID diagnostics that distinguish team transfers from organization sample entries/exits.
-* Night shift is now standard. Demonstrate a new transport allowance through one source
-  payroll addition and one registration, with no special cases in unrelated pipeline code.
-* Label reconstructed permanent references separately from independent actual/generated
-  payroll. Retain the legacy mock totals 494,716.700 and 625,148.125. Production inputs are
-  DataFrames; CSV parsing is optional and confined to the legacy adapter.
-* Execute the notebook from fresh kernels with and without the CSV. Save outputs and show
-  reconciliation, invalid-input/counterfactual checks and runtime. Use rtol=1e-10 and
-  atol=1e-6 for costs without rounding intermediate calculations.
+* Keep all production calculation functions inside the notebook. Its normal flow
+  must be a DataFrame input/settings cell, analysis call, results and optional
+  diagnostics. Hide implementation cells where the viewer supports it. Do not
+  add a separate production module, synthetic generator, automatic CSV loading
+  or demonstration outputs to this user workflow.
+* Employee-month records have exactly one team. Sharing bonuses belong to that
+  team. Employee IDs and transfers are diagnostics, never Shapley players.
+* Preserve the organizational N * sum(team_share * team_unit_cost) hierarchy,
+  nested team-unit and permanent games, and separate local team bridges. Never
+  combine organizational and local impacts. Switch complete probability vectors
+  and conditional-grade matrices atomically.
+* Missing contract economics default to the same team's observed opposite-period
+  rate; missing permanent economics copy the full permanent state. An absent
+  whole team copies observed unit economics, never observed workforce exposure.
+  Record every assumption and donor period. Explicit references override missing
+  economics only. Retain require_reference as an optional strict policy.
+* Categories with zero share in both completed endpoints are inactive. Do not
+  demand rates, salary policies or permanent matrices/games for these categories.
+  Unknown economics are None, not zero rates. Cost may skip a zero-share unknown;
+  a positive-share unknown must fail. Keep completion outside cost(state).
+* Sparse cells within an observed permanent population still use only that team
+  and period: cell → grade → region → team permanent population. Do not pool other
+  teams or borrow another period to fill individual sparse cells automatically.
+* Accept signed finite monetary components, reimbursements, references, source
+  costs, unit costs and totals. Never clip legitimate negative values. Missing
+  applicable amounts remain errors, not an absent-population fallback case.
+* Base salary and regional coefficients stay strictly positive. Worked time
+  stays nonnegative (values above one allowed); exposure and probability bounds
+  remain unchanged. Production exposure is one; no extra availability multiplier
+  belongs in its employee-month payroll formula.
+* Follow the production mappings and formula in the methodology. Apply regional
+  adjustment once to salary, sick/vacation/holiday/night pay and sharing/quarterly
+  bonuses. KPI, overtime and other bundled pay are unadjusted. Signed normalization
+  precedes aggregation/fallback and preserves actual source_cost.
+* Fixed coefficient policy remains an assumption. Reject inconsistent A/B policy
+  schedules; coefficient bands alone cannot distinguish geography or policy moves.
+* Propagate with auxiliary M, K and L multipliers, preserving analytical checks
+  and parent reconciliation. Never divide by parent change. Skip inactive games.
+  Retain exact enumeration, full-outer equivalence and the 14-driver PoC limit.
+* Preserve salary-weighted hours, the Within-team/region/grade salary level label,
+  cell-impact/provenance audits, support shares and matched-ID diagnostics. Pass
+  comparison periods explicitly; never hard-code January/February in functions.
+* Label reconstructed references separately from independent source costs. Adding
+  a driver must stay localized to source payroll and one registration. Verify
+  this in external tests instead of running a demo in the user notebook.
+
+# Readability and verification
+
+* Document every named function/class with a meaningful docstring. Substantial
+  public functions need parameters, returned values/units, failure conditions and
+  analytical assumptions; concise helpers need clear summaries. Use NumPy-style
+  sections where appropriate and follow PEP 257 conventions.
+* Comply with PEP 8: descriptive snake_case, four spaces, grouped imports, normal
+  whitespace and 79-character code lines. Avoid packed semicolon statements and
+  excessively dense expressions. Wrap prose at 72 characters where practical.
+* External tests must load tagged notebook implementation cells without copying
+  production logic. Keep small test fixtures and extension checks outside the
+  user-facing notebook. Run automated style/docstring checks and meaningful
+  analytical, signed-payment, missing-economics and counterfactual tests.
+* Test fresh-kernel execution both unconfigured and with a production-schema test
+  DataFrame injected into the designated input cell. Keep executed test outputs
+  temporary; deliver a notebook without stored payroll data/results.
+* Use rtol=1e-10 and atol=1e-6 without intermediate rounding. Validate source/team/
+  contract costs, all active games, probabilities, multipliers, both bridges and
+  explicit assumptions. Preserve no-input guidance and caller DataFrame integrity.
