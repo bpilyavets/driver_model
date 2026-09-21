@@ -49,6 +49,8 @@ Temporary and outsourced payroll use `gpd_pay` and `pkc_pay`.
   night shift, sharing and quarterly pay receive the coefficient once. KPI,
   overtime and other bundled pay are unadjusted.
 - Production exposure is one. Do not add another availability multiplier.
+  `vyrabotka_percent` is actual/planned hours and multiplies base salary only;
+  it is not workforce exposure and does not scale sick leave or other payments.
 
 If you have an independent employee-month total, set `source_cost_column` to its
 column name. Otherwise permanent payroll is reconstructed and labeled accordingly;
@@ -64,13 +66,18 @@ The default `missing_economics = "carry_observed"` does the following:
 | Contract category observed in one month | Use that same team's observed rate in both months. |
 | Permanent category observed in one month | Copy its complete permanent state. |
 | Whole team appears or disappears | Copy its unit economics, retaining zero workforce share in the absent month. |
-| Category inactive in both states | Skip its economics; do not invent a rate or salary matrix. |
+| Category inactive in both states | Skip its economics; do not invent a rate or permanent profile. |
 
 Copied economics have zero rate-change impact **by assumption**. The notebook
 reports the missing period, donor period and affected economics. Explicit references
 can override missing economics; `"require_reference"` restores strict handling of
 one-sided absence. Neither policy fills missing pay for existing employees.
-Reference formats are documented in [the methodology](docs/labor-cost-decomposition.md#16-sparse-support-and-automatic-missing-economics-completion).
+Employees permanent in only one month carry their observed salary/time inputs;
+this does not create employment in the missing month. Transfers use the same
+person's history, not the other team's average. Complete-copy category/team
+assumptions still imply zero branch economics change. References must contain
+aligned employee vectors and sparse cell profiles; old salary/time-matrix-only
+states must be rebuilt. Reference formats are documented in [the methodology](docs/labor-cost-decomposition.md#16-sparse-support-and-automatic-missing-economics-completion).
 
 Sparse cells within an observed permanent population still use same-period,
 same-team fallback: cell → grade → region → team permanent population. Coefficient
@@ -84,13 +91,17 @@ analysis["local_bridges"]   # Local bridges indexed by team name.
 analysis["team_summary"]    # Team endpoints and the two reporting views.
 analysis["assumptions"]     # Inactive, copied or referenced economics.
 analysis["validation"]      # Detailed pass/error records.
-analysis["diagnostics"]     # Salary, fallback and matched-employee audits.
+analysis["diagnostics"]     # Salary/time/membership and matched-ID audits.
 ```
 
 Organizational and local bridges allocate scale interactions differently: do not
 add their rows together. Signed payroll explains the recorded month, including
-reversals. The within-team/region/grade salary driver includes changing cell
-membership and team transfers, not only individual raises.
+reversals. Base salary changes and the proportion of planned hours worked are
+switched separately using matched employee inputs. A raise cannot itself
+create a time impact. A third driver, Within-cell workforce mix — base pay, explains changing
+membership; grade and membership effects may offset. Salary changes include
+promotions without establishing their cause. Other payments keep their existing
+per-cell definitions.
 
 For programmatic use after loading the notebook's implementation cells:
 
@@ -105,9 +116,10 @@ report(analysis)
 ```
 
 Use `help(analyze_labor_cost)` or other function docstrings for contracts and units.
-Exact permanent games enumerate 8,192 coalitions for 13 drivers; the maximum is
-14. The PoC remains intended for small team sets. `cost(state)` works independently
-of comparison and SHAP, with explicit economics required for positive-share
+Exact permanent games enumerate 16,384 coalitions for 14 drivers; the maximum is
+15 (32,768 with an additional registered payment). The PoC remains intended for
+small team sets. `cost(state)` works independently of comparison and SHAP,
+with explicit economics required for positive-share
 categories. No optimizer or ingestion infrastructure is included.
 
 ## Development checks

@@ -28,7 +28,7 @@ def test_complete_reconciliation_and_input_integrity(
     result = analyze(model, complete_frame, months)
     pd.testing.assert_frame_equal(original, complete_frame)
     assert result["periods"] == months
-    assert result["permanent"]["Alpha"]["audit"]["coalitions"] == 8192
+    assert result["permanent"]["Alpha"]["audit"]["coalitions"] == 16384
     assert set(result["diagnostics"]["unsupported"].value_period) == set(
         months
     )
@@ -443,7 +443,7 @@ def test_registry_extension(model, months):
     result = analyze(model, frame, months, registry=registry)
     impacts = result["bridge"].set_index("driver").impact
     assert impacts["transport_allowance"] == pytest.approx(84)
-    assert result["permanent"]["Alpha"]["audit"]["coalitions"] == 16384
+    assert result["permanent"]["Alpha"]["audit"]["coalitions"] == 32768
     assert "transport_allowance" in set(
         result["diagnostics"]["unsupported"].variable
     )
@@ -454,10 +454,12 @@ def test_registry_extension(model, months):
 
 def test_reconstruction_with_null_inapplicable_columns(model, months):
     """All-permanent data can leave both contract-pay columns null."""
-    frame = pd.DataFrame([
-        payroll_row(str(month.date()), "x", bonus_kpi_comp=-150)
-        for month in months
-    ])
+    frame = pd.DataFrame(
+        [
+            payroll_row(str(month.date()), "x", bonus_kpi_comp=-150)
+            for month in months
+        ]
+    )
     frame["gpd_pay"] = None
     frame["pkc_pay"] = None
     result = model["analyze_labor_cost"](frame, *months)

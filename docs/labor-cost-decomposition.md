@@ -97,7 +97,7 @@ This granularity is necessary because employee-level records contain the informa
 * grade;
 * base salary;
 * regional salary coefficient;
-* worked hours;
+* actual/planned hours fraction;
 * bonus/KPI variables;
 * overtime;
 * holiday pay;
@@ -112,11 +112,14 @@ N,\quad
 P(ContractType),\quad
 P(R),\quad
 P(G\mid R),\quad
-\mu_{GR},\quad
+w_{i\mid t,r,g},\quad B_i,\quad h_i,\quad
 \ldots
 $$
 
-The attribution game operates on changes in these aggregate workforce-state drivers between periods A and B.
+The attribution game switches complete workforce-state business objects between
+periods A and B. Salary and time inputs retain employee pairing; employees are
+not individual players. Exposure-weighted membership profiles determine their
+contribution within cells.
 
 The intended pipeline is therefore:
 
@@ -178,8 +181,9 @@ Total labor cost
     └── Permanent unit cost
         ├── Regional coefficient-band mix
         ├── Grade composition within region
-        ├── Within-team/region/grade salary level
-        ├── Worked hours (salary-weighted)
+        ├── Within-cell workforce mix — base pay
+        ├── Base salary changes
+        ├── Proportion of planned hours worked
         └── Nine registered payment drivers
 ```
 
@@ -233,50 +237,81 @@ not a transfer to the team receiving help. Other bundled pay is an explicit sour
 not a residual inserted to force reconciliation.
 
 The permanent cost engine must stay extensible: payroll contributions and their regional
-eligibility belong in the driver registry, not in SHAP or reporting code. There are 13 current
-permanent drivers: four composition/salary/time drivers and nine separate payment drivers.
+eligibility belong in the driver registry, not in SHAP or reporting code. There are 14 current
+permanent drivers: five composition/salary/time drivers and nine separate payment drivers.
 
 ---
 
-# 7. Base salary and component-level regional adjustment
+# 7. Employee-aligned base salary and worked fraction
 
-Canonical salary and eligible payment amounts are pre-regional currency per exposure.
-Payment components may be signed. Salary, sick leave, vacation, holiday, night
-shift, sharing and quarterly bonuses receive the destination region's coefficient
-once. KPI, overtime and other bundled pay do not.
+`vyrabotka_percent` is actual hours divided by planned hours. For example,
+100/160 is 0.625. It is not workforce exposure: a person can work zero hours
+and still be employed and receive sick-leave or vacation payments. Production
+exposure remains one per employee-month. The fraction multiplies base salary
+only; do not multiply other payments by it. Values above one are permitted.
+
+For each team-period, keep an aligned employee axis, pre-regional salary vector
+B, worked-fraction vector h, and sparse cell membership profiles w. Each profile
+contains employee indices and normalized exposure weights. At observed cells:
+
+$$
+w_{i\mid t,r,g}=\frac{e_i}{\sum_{j\in(t,r,g)}e_j},\qquad
+S_{t,r,g}=\sum_i w_{i\mid t,r,g}B_i h_i.
+$$
+
+The permanent formula is:
 
 $$
 c_{P,t}=\sum_{r,g}p_{r|t}p_{g|r,t}
-\left[R_r(\mu_{t,r,g}h^*_{t,r,g}+Sick+Vacation+Holiday+Night+Sharing+Quarterly)
+\left[R_r(S_{t,r,g}+Sick+Vacation+Holiday+Night+Sharing+Quarterly)
 +KPI+Overtime+Other\right].
 $$
 
-Within each team × region × grade cell:
+This reproduces the employee formula exactly, with salary and time paired by
+identity. Do not replace it with a product of independent averages or with a
+salary-weighted time factor. The former loses association; the latter can create
+a time impact from a salary increase even when nobody's worked fraction changed.
 
-$$
-\mu=\frac{\sum_i e_iB_i}{\sum_i e_i},\qquad
-h^*=\frac{\sum_i e_iB_ih_i}{\sum_i e_iB_i}.
-$$
+The three separate complete business switches are:
 
-This exactly preserves the employee-level salary/time product. The worked-hours driver
-can include changing salary/time association within a cell and is not a pure causal hours
-effect. Ordinary salary and time means lose this association and can fail
-source reconciliation even without any negative payments.
+- `underlying_salary_level`: **Base salary changes**, now an employee vector.
+- `worked_hours`: **Proportion of planned hours worked**, now an employee vector.
+- `within_cell_workforce_mix`: **Within-cell workforce mix — base pay**, a complete
+  collection of normalized sparse profiles.
 
-Declare `apply_regional_coefficient` for every registered cost contribution, including
-salary's salary × time contribution. Sharing a multiplier does not merge payment drivers.
+The membership driver affects base pay only. Supplemental payments retain their
+per-cell average definitions, which can still include changing membership.
 
-`normalize_regional_inputs(frame, already_regionalized=(...))` divides explicitly identified
-eligible columns by their **source-region** coefficient before aggregation/fallback. It
-never infers their basis, adjusts an ineligible component, or changes `source_cost`.
-Apply it once; the production adapter expects pre-regional inputs directly.
-When normalizing canonical data, preserve an already-correct source payroll reference.
+For one fixed employee and regional coefficient one, salary 100,000→110,000 and
+worked fraction 0.625→0.75 give a 20,000 increase. The isolated two-driver Shapley
+split is 6,875 salary and 13,125 time. If the fraction stays 0.625, salary gets
+6,250 and time gets zero. The full hierarchy allocates additional composition
+interactions through its specified games, not a separate employee bridge.
 
-Production has no geographical region identifier: `region_{reg_coef}` is a coefficient
-band, not a known geographical area. Movement between bands is a composition change under
-this parameterization. These fields alone cannot distinguish a policy change from band
-movement. Fixed coefficient policy is therefore an explicit assumption. Supplied A/B
-states with differing coefficient schedules for aligned regions fail explicitly.
+Match permanent employees by ID across the organization before constructing
+team comparisons. Transfers use that person's actual other-period salary/time,
+not another team's average. If a person is permanent in only one period,
+including a contract transition, carry their observed salary/time values to
+the missing endpoint. This assumption never adds employees or exposure.
+Both employee values are positive/nonnegative as before; membership weights
+are normalized and nonnegative. Joined/leaving profile IDs cannot create an
+inferred raise or time change under this default.
+
+The ratio does not distinguish changes in actual hours from changes in planned
+hours. Base-salary changes include promotion-related increases, decreases and
+other observed changes; the data do not identify their cause.
+
+Canonical salary and eligible payments are pre-regional currency per exposure.
+Signed payments stay signed. Apply the destination coefficient once to salary,
+sick/vacation/holiday/night pay and sharing/quarterly bonuses; leave KPI, overtime
+and other bundled pay unadjusted. Eligibility remains registry metadata.
+
+`normalize_regional_inputs(frame, already_regionalized=(...))` divides identified
+eligible inputs by their source coefficient before building vectors/profiles or
+fallbacks. Apply it once, preserving an already-correct source payroll total.
+
+Production coefficient bands are not identified geography. Fixed coefficient
+policy remains an assumption; differing A/B coefficient schedules fail explicitly.
 
 ---
 
@@ -313,7 +348,8 @@ from the available data.
 
 Do not infer one using arbitrary salary normalization.
 
-Instead use observable workforce-composition and within-cell salary components.
+Instead use observed base-salary changes and explicit workforce-composition
+components. A promotion does not establish what portion of a raise it caused.
 
 ---
 
@@ -330,37 +366,31 @@ each region row sums to one, including fallback rows for absent regions. Team me
 is handled by the outer team-share vector and nested team economics, not by splitting
 regional/grade probabilities into independently switchable scalar shares.
 
-The `underlying_salary_level` matrix is labeled **Within-team/region/grade salary level**:
+Within each team/region/grade, a further membership profile specifies who
+occupies the cell. It is separate from the cell's share of the workforce.
+The entire collection switches atomically. This keeps salary/time changes
+separate from composition even when employees enter, leave or move cells.
 
-$$
-\mu_{t,r,g}=E_e[BaseSalary\mid T=t,R=r,G=g,Permanent].
-$$
-
-The expectation is weighted by exposure. It includes within-cell pay revisions, differently
-paid employees entering/leaving a cell or team, position within the grade salary range,
-and unsupported-cell fallback changes. Transfers can change it even if matched employees
-receive no raises. It is neither a pure raise effect, CR nor a grade coefficient.
-
-Keep cell provenance and matched-employee diagnostics beside the attribution; do not
-manufacture unidentified economic variables from grade and salary alone.
+Grade mix and within-cell membership can offset. A person moving grades without
+a salary change must not produce a base-salary-change impact. These are
+hierarchical accounting counterfactuals, not causal estimates of promotion pay.
+Keep provenance and matched-employee diagnostics beside the bridge.
 
 ---
 
 # 10. Salary composition identity
 
-Within a team, the salary component is:
+Within a team:
 
 $$
-\bar S_t=\sum_{r,g}p_{r|t}p_{g|r,t}R_r\mu_{t,r,g}h^*_{t,r,g}.
+\bar S_t=\sum_{r,g}p_{r|t}p_{g|r,t}R_r
+\sum_i w_{i\mid t,r,g}B_i h_i.
 $$
 
-```python
-joint_mix = permanent_state['regional_mix'][:, None] * permanent_state['grade_mix_within_region']
-```
-
-The shared cell-cost engine multiplies this composition by registered payroll contributions.
-It supplies both summed permanent cost and the cell contributions used in the salary audit.
-Changing payroll logic must not require editing the attribution formula.
+Composition weights count exposure. The payroll contribution is the profile's
+weighted mean of paired salary × worked fraction. This shared formula must be
+used by standalone costing, exact attribution, cached salary scenarios and
+cell-impact audits. Attribution must not redefine payroll.
 
 ---
 
@@ -393,7 +423,11 @@ The result contains `bridge`, `local_bridges`, `hierarchy`, `permanent`, `upper`
 States retain the original structure: organizational `workforce_scale`, complete
 `team_mix`, `_teams` axis, and a dictionary of nested team economics. Each team
 holds complete `contract_type_mix`, reimbursement rates and its permanent state.
-Permanent states hold fixed axes/coefficients and registered composition/pay matrices.
+Permanent states hold fixed region/grade axes and coefficients, `_employees`,
+registered composition/payment matrices, employee salary/time vectors and
+`within_cell_workforce_mix`. Its keys are `(region_index, grade_index)`; values
+are `{"indices": integer_array, "weights": probability_array}`. Every aligned cell
+has a supported profile, even when its observed exposure is zero.
 
 Unavailable economics are `None`, not zero unit rates. An observed absent whole
 team may have a `None` team state. Zero-share unknowns contribute zero cost;
@@ -416,7 +450,8 @@ Interfaces remain separate:
 - `report(analysis, team=None)` shows organizational results or one local team.
   `show_diagnostics(analysis, details=False, team=None)` controls diagnostic detail.
 
-No inferred employee-level counterfactual records are manufactured.
+Employees are aligned inside state construction; no employee-level SHAP players
+or separate employee attribution bridge are introduced.
 
 ---
 
@@ -463,7 +498,7 @@ For small driver sets, exact Shapley enumeration is preferred.
 
 # 14. Exact hierarchical games
 
-Run a 13-player permanent-unit game for each team with active permanent economics,
+Run a 14-player permanent-unit game for each team with active permanent economics,
 then a team-unit game with up to four players (contract mix, temporary rate,
 outsourcing rate, permanent unit). Skip inactive category economics.
 The organization has scale, whole team mix and one economics scalar per team.
@@ -471,9 +506,13 @@ A local team has a two-player outer game (local scale, unit economics).
 
 Use `shap.ExactExplainer` with a single zero background and explain the one vector,
 allowing 2**d evaluations. Validate all binary coalitions, including probability objects
-and finite costs. The PoC has an explicit 14-driver limit per exact game; no silent
-switch to approximate attribution. An added 14th driver has 16,384 coalitions;
-this is verified by external regression tests rather than a notebook demonstration.
+and finite costs. The PoC has an explicit 15-driver limit per exact game; no silent
+switch to approximate attribution. Standard games have 16,384 coalitions; an
+added 15th driver has 32,768. External regression tests verify this without
+adding demonstrations to the user notebook.
+Precompute the eight membership/salary/time matrices with the shared cost helper.
+Reuse them only inside the current game/audit; returned states carry no cache.
+Validate cached versus direct costing and every constructed coalition.
 
 For organizational cost, exploit exact Shapley additivity:
 
@@ -533,15 +572,22 @@ Fallbacks remain within the same period and team:
 3. that team's corresponding region population;
 4. that team's permanent population.
 
-Recompute the original weighted estimator on the chosen population. An absent
+Payments recompute their exposure-weighted means. Salary fallback selects the
+complete normalized employee profile from the chosen population. An absent
 region uses that team-period's marginal grade distribution. Never fill unknown
 salary/payment cells with zero or automatically borrow another team's pay.
 Disabling needed fallback must fail explicitly.
 
-Eligible salary/payment fallbacks are pre-regional currency per exposure. Signed
-payments remain signed through normalization, pooling and destination-region
-adjustment. Other payments are currency per exposure; distributions and worked
-time are dimensionless. Counts of zero indicate absence, not zero unit economics.
+Payment fallbacks are currency per exposure, pre-regional when eligible.
+Salary profiles contain dimensionless probabilities; employee salary inputs are
+pre-regional currency per exposure and worked fractions are dimensionless.
+Signed payments remain signed through normalization, pooling and destination
+adjustment. Counts of zero indicate absence, not zero unit economics.
+
+Salary-profile fallback is distinct from identity matching: populations stay
+within team and period, but a matched employee's own salary/time history may come
+from their other team. Missing individual values are carried only when there is
+no permanent observation in that period; missing applicable payroll is an error.
 
 ## Missing categories and teams
 
@@ -551,14 +597,16 @@ The default `missing_economics="carry_observed"` policy is:
 |---|---|
 | Category observed in both periods | Preserve both observed economics. |
 | Temporary/outsourced category observed in one period | Copy that same team's observed-period reimbursement into the missing period. |
-| Permanent category observed in one period | Copy its complete permanent state, including distributions and all matrices. |
+| Permanent category observed in one period | Copy its complete permanent state, including profiles, employee vectors, distributions and payment matrices. |
 | Category share zero in both completed endpoint states | Inactive; no rate or reference is required and no economics player is run. |
 | Whole team absent in one period | Copy the observed team's complete unit economics, retaining its observed zero team exposure/share. |
 
 Copying means zero economics change **by assumption**, not an observed unchanged
 rate. Whole-team appearances/disappearances are allocated through organization
 scale/team mix and local team scale when economics are copied. The hierarchy's
-interaction allocation remains unchanged.
+interaction allocation remains unchanged. Complete-copy assumptions still give
+zero branch economics change when some employees are observed elsewhere; this
+qualifies the interpretation of individual-input drivers for absent branches.
 
 Explicit business references take precedence over copying missing economics;
 they never replace an actually observed category. Reference keys are `(period, team)`:
@@ -574,7 +622,13 @@ references = {
 }
 ```
 
-Supply only applicable entries. The optional `"require_reference"` policy rejects
+Supply only applicable entries. Permanent references must use the revised state
+schema: `_employees`, paired positive/nonnegative salary/time vectors, normalized
+membership profiles and all registered matrices. The employee axis must equal
+the sorted union of IDs in the team's comparison/profile states. Use revised
+state builders to create reference states, then supply aligned business values.
+Legacy salary/time-matrix-only references fail with a rebuild instruction; no
+employee pairing can be recovered from two averages. The optional `"require_reference"` policy rejects
 one-sided missing economics without explicit references, but still skips inactive
 categories. Whole-team references include their counterfactual contract mix;
 category references do not overwrite observed shares. If such a reference gives a
@@ -584,7 +638,7 @@ its actual organizational exposure is zero.
 Unavailable values remain `None`. A planning state assigning positive share to an
 unavailable category or team must supply economics. Cost engines never silently
 carry history or interpret unknown rates as zero. Permanent branches inactive in
-both states need neither salary matrices nor permanent games/audits.
+both states need neither salary profiles/vectors nor permanent games/audits.
 
 ## Provenance
 
@@ -594,7 +648,9 @@ explicit-reference and carried-observation cases. Copy actual economics only; do
 not manufacture employees or copy exposure into an absent period.
 
 Detailed value diagnostics contain `period`, `team`, `region`, `grade`, `variable`,
-`fallback_level`, `fallback_value` and `source_period`. Preserve all reference/copy
+`fallback_level`, `fallback_value`, `source_period` and, for employee vectors,
+`employee_id`. Profile provenance rows store normalization mass 1, not a salary
+or worker count; `membership_profiles` exposes the actual weights. Preserve all reference/copy
 records, including later explicit refinements of an automatically copied team;
 cell audits use the final effective value/provenance. Coverage and maximum
 unsupported counterfactual exposure remain available. Support shares are not
@@ -629,7 +685,12 @@ separate production module. Cover:
   equivalence and unchanged-driver zero impacts;
 - zero-change parents with offsetting signed children and automatic extension
   through one payment registration plus independently calculated source payroll;
-- arbitrary months, period-correct diagnostics and unchanged caller frames.
+- arbitrary months, period-correct diagnostics and unchanged caller frames;
+- salary-only/time-only independence, unequal raises, joint interaction arithmetic,
+  and changed salary/time association with unchanged ordinary means;
+- employee entry/exit, contract transitions, promotions and cross-team matching;
+- sparse profile normalization, invalid indices, legacy-reference migration,
+  cached/direct salary equality and the 15-driver extension limit.
 
 Run fresh-kernel workflow tests with no configured input and with a small
 production-shaped test DataFrame injected into the input cell. Execute plots and
@@ -654,17 +715,23 @@ source-reference basis and compact validation/assumption summary. A selected tea
 gets its local bridge and waterfall. Detailed salary/fallback diagnostics are
 opt-in. Tables and plots must handle negative A/B costs and signed effects.
 
-Salary audits retain team × region × grade counts, pre-regional means, effective
-observed/fallback provenance and permanent-unit/organizational/local currency.
-Use the existing salary player's coalition weights and M*K / L*K multipliers.
-Shared cell-cost contributions supply matrix-valued marginals; assert cell
-additivity and agreement with salary SHAP. Cells are not new players. Report net
-and absolute-impact support shares, undefined when their denominator is zero.
-Skip salary audits when permanent employment is inactive.
+Cell audits separately reconcile salary, worked fraction and within-cell base-pay
+membership to their full-game players. They share the registered salary costing
+formula and use M*K / L*K multipliers for organizational/local currency. By
+Shapley additivity and dummy-player invariance, additive payment players can be
+omitted from these marginal calculations; assertions compare against the full
+14-player game. Cells and employees are not additional players.
 
-Matched IDs describe base-salary changes, grade/region changes, team transfers and
-sample entries/exits for the explicit comparison months. These are descriptive
-records, not extra impacts, causal raise estimates or inferred employment dates.
+Descriptive mean salary/time columns explain cell populations but are not the
+switched driver values. Retain coverage, fallback provenance and net/absolute
+support shares. Skip these audits for inactive permanent branches.
+
+`employee_alignment` records matching/carry decisions and donor periods/teams.
+`employee_inputs` records final effective vectors, including references and whole
+copied states; `membership_profiles` exposes their weights. Category references
+and copied economics are qualified by the assumptions/fallback tables. Matched
+records include salary/time changes, grades, region bands, transfers and sample
+entries/exits. They do not establish hiring dates or causes of salary changes.
 Organizational and local bridge rows must never be combined.
 
 ---
@@ -685,13 +752,11 @@ means:
 
 It does not establish that grade changes causally produced all downstream payroll changes.
 
-Similarly:
-
-```text
-underlying salary level
-```
-
-is deliberately broader than CR because CR cannot currently be identified.
+The label **Base salary changes** denotes observed input changes, including
+promotions; it does not establish discretionary raises or CR. Unchanged salary
+or worked-fraction vectors must have zero impacts, regardless of how their
+membership weights change. Explicit hypothetical references can supply changes
+that are assumptions rather than observations.
 
 Use labels consistent with what is actually observed and identified.
 
@@ -701,8 +766,9 @@ Use labels consistent with what is actually observed and identified.
 
 A future planner can construct a workforce state directly and call `cost(state)`. Decision
 variables can include workforce size, team shares, and within-team contract, regional and
-conditional-grade distributions. Explicit salary, payment and reimbursement assumptions
-complete the planned economics, with references for unsupported categories.
+conditional-grade distributions. Explicit employee salary/time vectors, cell
+membership profiles, payment and reimbursement assumptions complete the planned
+economics, with references for unsupported categories.
 
 Business constraints could impose team staffing minima, service capacity, regional labor
 availability, contract limits, grade/skill coverage, quality/SLA requirements and hiring
@@ -752,9 +818,9 @@ costs. Never clip, take absolute values or replace negative amounts with zero.
 
 Base salary and regional coefficients remain strictly positive; worked time is
 nonnegative; exposure and composition retain their quantity constraints. Signed
-payments do not create negative aggregation weights or a negative salary-weighted
-hours denominator. Interpretation is recorded monthly net payroll, including
-reversals; a negative source total still needs explaining components.
+payments do not create negative aggregation weights; base salary and
+worked fraction keep their separate constraints. Interpretation is recorded
+monthly net payroll, including reversals; a negative source total still needs explaining components.
 
 Without `source_cost_column`, permanent payroll is reconstructed using section 6
 and other contract references use gpd_pay/pkc_pay. An independent source column

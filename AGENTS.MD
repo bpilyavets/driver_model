@@ -91,7 +91,7 @@ Whenever changing driver architecture, verify this property explicitly.
 
 Input data may be assumed to be available as Pandas DataFrames.
 
-The source data are stored at **individual employee-month level**, but the decomposition model is **not employee-level**. Employee records are inputs used to construct aggregated period-level workforce states such as workforce exposure, contract mix, regional mix, grade composition within region, and region × grade salary levels.
+The source data are stored at **individual employee-month level**, but the decomposition model is **not employee-level**. Employee records are inputs used to construct aggregated period-level workforce states such as workforce exposure, contract mix, regional mix, grade composition within region, and employee-aligned salary/time inputs with sparse within-cell membership profiles.
 
 Do not run SHAP directly over employees or interpret the sum of employee-level attributions as workforce-composition effects unless explicitly requested.
 
@@ -136,7 +136,8 @@ Do not implement an optimizer unless explicitly requested.
   add a separate production module, synthetic generator, automatic CSV loading
   or demonstration outputs to this user workflow.
 * Employee-month records have exactly one team. Sharing bonuses belong to that
-  team. Employee IDs and transfers are diagnostics, never Shapley players.
+  team. Employee IDs align salary/time observations, including transfers, but
+  are never Shapley players.
 * Preserve the organizational N * sum(team_share * team_unit_cost) hierarchy,
   nested team-unit and permanent games, and separate local team bridges. Never
   combine organizational and local impacts. Switch complete probability vectors
@@ -168,10 +169,30 @@ Do not implement an optimizer unless explicitly requested.
   schedules; coefficient bands alone cannot distinguish geography or policy moves.
 * Propagate with auxiliary M, K and L multipliers, preserving analytical checks
   and parent reconciliation. Never divide by parent change. Skip inactive games.
-  Retain exact enumeration, full-outer equivalence and the 14-driver PoC limit.
-* Preserve salary-weighted hours, the Within-team/region/grade salary level label,
-  cell-impact/provenance audits, support shares and matched-ID diagnostics. Pass
-  comparison periods explicitly; never hard-code January/February in functions.
+  Retain exact enumeration, full-outer equivalence and the 15-driver PoC limit
+  (14 standard permanent drivers).
+* Use employee-aligned salary and actual/planned-hours vectors. Never reconstruct
+  time as a salary-weighted ratio or multiply independent salary/time means.
+  Register the complete normalized within-cell membership profiles as one extra
+  base-pay driver. Keep sparse integer-index/weight arrays, not a dense tensor.
+* Label the drivers Base salary changes, Proportion of planned hours worked and
+  Within-cell workforce mix — base pay. Salary changes include promotions without
+  identifying their cause. Supplemental payment matrices retain their existing
+  interpretation; the new membership player affects base pay only.
+* Match each employee's permanent inputs across the organization, including team,
+  region and grade transfers. Missing permanent observations carry that person's
+  observed salary/time, never workers or exposure. Record matching/carry provenance.
+  Same-person transfer history is allowed; pooled cross-team fallback is not.
+* Keep standalone costing independent of comparison. Complete-copy rules for an
+  absent category/team still override branch economics changes by assumption.
+  References need the revised aligned profile/vector schema; reject legacy
+  aggregate-only references rather than invent pairing.
+* Reuse the shared salary formula for eight cached comparison scenarios and the
+  salary/time/membership cell audits. Caches stay local to a synchronous game;
+  never retain them in returned states. Verify cached/direct equality.
+* Preserve cell-impact/provenance audits, support shares and matched-ID diagnostics
+  with salary and worked-fraction changes. Pass comparison periods explicitly;
+  never hard-code January/February in functions.
 * Label reconstructed references separately from independent source costs. Adding
   a driver must stay localized to source payroll and one registration. Verify
   this in external tests instead of running a demo in the user notebook.
@@ -188,7 +209,9 @@ Do not implement an optimizer unless explicitly requested.
 * External tests must load tagged notebook implementation cells without copying
   production logic. Keep small test fixtures and extension checks outside the
   user-facing notebook. Run automated style/docstring checks and meaningful
-  analytical, signed-payment, missing-economics and counterfactual tests.
+  analytical, signed-payment, missing-economics and counterfactual tests,
+  including zero time impact for salary-only changes and zero salary impact
+  for time-only changes.
 * Test fresh-kernel execution both unconfigured and with a production-schema test
   DataFrame injected into the designated input cell. Keep executed test outputs
   temporary; deliver a notebook without stored payroll data/results.
