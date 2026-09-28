@@ -169,8 +169,9 @@ Do not implement an optimizer unless explicitly requested.
   schedules; coefficient bands alone cannot distinguish geography or policy moves.
 * Propagate with auxiliary M, K and L multipliers, preserving analytical checks
   and parent reconciliation. Never divide by parent change. Skip inactive games.
-  Retain exact enumeration, full-outer equivalence and the 15-driver PoC limit
-  (14 standard permanent drivers).
+  Keep small upper games and multipliers exact. Permanent games explicitly select
+  exact or permutation; exact remains the default with its 15-driver safeguard.
+  Never switch silently. Permutation mode must support larger registered sets.
 * Use employee-aligned salary and actual/planned-hours vectors. Never reconstruct
   time as a salary-weighted ratio or multiply independent salary/time means.
   Register the complete normalized within-cell membership profiles as one extra
@@ -190,6 +191,21 @@ Do not implement an optimizer unless explicitly requested.
 * Reuse the shared salary formula for eight cached comparison scenarios and the
   salary/time/membership cell audits. Caches stay local to a synchronous game;
   never retain them in returned states. Verify cached/direct equality.
+* Use shap.PermutationExplainer with one zero background and a one-vector input.
+  One forward/reverse cycle costs a budget of 2*d+1 in pinned SHAP. Default to
+  256 cycles and seed 0; validate settings, derive stable per-team seeds and
+  preserve the caller's NumPy RNG state. Reconciliation is not sampling accuracy.
+* Approximate permanent games explain cell-cost vectors; summed cell impacts are
+  the driver impacts. Approximate cell audits reuse those same samples. Never
+  compare sampled impacts with independently exact diagnostics or rescale them.
+  Keep exact-mode audits and exact_game compatibility intact.
+* Report actual methods, evaluation budgets/counts, seeds and runtime. Validate
+  every evaluated counterfactual; require exhaustive coverage only in exact mode.
+  Sampled extrema are extrema of evaluated states, not all possible states.
+* Keep empirical accuracy benchmarks and results outside the notebook. External
+  experiments may exploit validated component additivity for a 20-driver exact
+  reference; do not introduce that shortcut as another production mode. Time the
+  real validated engine separately from any benchmark-only lookup acceleration.
 * Preserve cell-impact/provenance audits, support shares and matched-ID diagnostics
   with salary and worked-fraction changes. Pass comparison periods explicitly;
   never hard-code January/February in functions.

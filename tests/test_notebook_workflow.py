@@ -49,9 +49,10 @@ def test_notebook_style_and_docstrings(tmp_path):
 
 
 @pytest.mark.kernel
-@pytest.mark.parametrize("configured", [False, True])
-def test_fresh_kernel_input_workflow(tmp_path, configured):
+@pytest.mark.parametrize("mode", [None, "exact", "permutation"])
+def test_fresh_kernel_input_workflow(tmp_path, mode):
     """Run fresh kernels with empty and signed production-schema inputs."""
+    configured = mode is not None
     notebook = nbformat.read(NOTEBOOK, as_version=4)
     frame = pd.DataFrame(
         [
@@ -82,6 +83,9 @@ def test_fresh_kernel_input_workflow(tmp_path, configured):
                     "show_detailed_diagnostics = True\n"
                     "references = None\n"
                     'missing_economics = "carry_observed"\n'
+                    f"explainer = {mode!r}\n"
+                    "n_permutations = 8\n"
+                    "random_seed = 7\n"
                 )
     final_check = (
         "assert analysis['validation'].passed.all()\n"

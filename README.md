@@ -116,11 +116,39 @@ report(analysis)
 ```
 
 Use `help(analyze_labor_cost)` or other function docstrings for contracts and units.
-Exact permanent games enumerate 16,384 coalitions for 14 drivers; the maximum is
-15 (32,768 with an additional registered payment). The PoC remains intended for
-small team sets. `cost(state)` works independently of comparison and SHAP,
-with explicit economics required for positive-share
-categories. No optimizer or ingestion infrastructure is included.
+
+## Choose the permanent-driver explainer
+
+The input cell and API accept:
+
+```python
+explainer = "exact"       # Default; or "permutation" for sampling.
+n_permutations = 256      # Forward/reverse cycles; permutation mode only.
+random_seed = 0           # Nonnegative integer for reproducibility.
+```
+
+Pass the same keywords to `analyze_labor_cost(...)` or `decompose(...)`.
+Small organizational/team games and propagation multipliers always remain exact.
+The selected method applies to permanent games, which can grow with your registry.
+
+Exact mode enumerates 16,384 coalitions for the standard 14 drivers. Its 15-driver
+limit is a PoC safeguard, not a SHAP hard limit; above it, choose permutation mode
+explicitly. There is no silent method change. Permutation mode supports 20 or more
+drivers and uses a budget of `n_permutations * (2*d + 1)` per team. Sampling
+settings are validated in both modes but used only in permutation mode.
+
+Results show the requested configuration and the actual method, budget, seed,
+evaluation counts and runtime per game. A stable team-derived seed makes runs
+reproducible regardless of team iteration order, without changing NumPy's caller
+random state. Sampled cell diagnostics use the same allocation as the bridge.
+Numerical reconciliation does **not** establish individual-impact accuracy;
+sampled extrema describe evaluated states only.
+
+The separate [accuracy assessment](docs/explainer-accuracy.md) contains measured
+tradeoffs, assumptions and reproduction instructions. No benchmark or accuracy
+estimate runs in the notebook. `cost(state)` stays independent of comparison and
+SHAP, with economics required for positive-share categories. No optimizer or
+ingestion infrastructure is included.
 
 ## Development checks
 

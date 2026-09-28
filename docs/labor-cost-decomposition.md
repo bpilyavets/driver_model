@@ -407,18 +407,21 @@ analysis = analyze_labor_cost(
     source_cost_column=None,
     references=None,
     missing_economics="carry_observed",
+    explainer="exact",
+    n_permutations=256,
+    random_seed=0,
 )
 ```
 
 It selects the requested months, copies/adapts the production DataFrame, builds
-comparison states, performs exact attribution, reconciles results and gathers
+comparison states, performs the selected attribution, reconciles results and gathers
 diagnostics. All dates are explicit; no function assumes January/February.
 The caller's frame is unchanged. Without an independent source-cost column,
 permanent reference payroll is reconstructed and labeled accordingly.
 
 The result contains `bridge`, `local_bridges`, `hierarchy`, `permanent`, `upper`,
 `coalition_audit`, `states`, `periods`, `frame`, `team_summary`, `validation`,
-`assumptions`, `diagnostics` and `elapsed_seconds`.
+`assumptions`, `diagnostics`, `explainer_config` and `elapsed_seconds`.
 
 States retain the original structure: organizational `workforce_scale`, complete
 `team_mix`, `_teams` axis, and a dictionary of nested team economics. Each team
@@ -496,23 +499,46 @@ For small driver sets, exact Shapley enumeration is preferred.
 
 ---
 
-# 14. Exact hierarchical games
+# 14. Exact and sampled hierarchical games
 
-Run a 14-player permanent-unit game for each team with active permanent economics,
-then a team-unit game with up to four players (contract mix, temporary rate,
-outsourcing rate, permanent unit). Skip inactive category economics.
-The organization has scale, whole team mix and one economics scalar per team.
-A local team has a two-player outer game (local scale, unit economics).
+The permanent model has 14 drivers. Its estimator is selectable through
+`analyze_labor_cost` and `decompose`; organizational/team-unit/local games and
+auxiliary multipliers remain exact because their games have only 2–4 drivers.
+The reduced organizational term games also stay exact regardless of team count.
 
-Use `shap.ExactExplainer` with a single zero background and explain the one vector,
-allowing 2**d evaluations. Validate all binary coalitions, including probability objects
-and finite costs. The PoC has an explicit 15-driver limit per exact game; no silent
-switch to approximate attribution. Standard games have 16,384 coalitions; an
-added 15th driver has 32,768. External regression tests verify this without
-adding demonstrations to the user notebook.
-Precompute the eight membership/salary/time matrices with the shared cost helper.
-Reuse them only inside the current game/audit; returned states carry no cache.
-Validate cached versus direct costing and every constructed coalition.
+`explainer="exact"` remains the default. Use `shap.ExactExplainer` with one zero
+background and explain the one vector, allowing 2**d evaluations. Require all
+binary coalitions to be evaluated. The explicit 15-driver guard is a PoC resource
+safeguard, not a SHAP hard limit. Above it, fail with an instruction to select
+permutation mode; never switch silently.
+
+`explainer="permutation"` uses `shap.PermutationExplainer` with the same background
+and business switches. The default `n_permutations=256` means 256 complete
+forward/reverse cycles. Set `max_evals=n_permutations*(2*d+1)` for pinned SHAP
+0.48.0. There is no exact-mode driver cap in this path. Sampling budgets must be
+positive integers; `random_seed=0` defaults to a nonnegative integer. Reject
+booleans and invalid settings, even when sampling settings are unused in exact
+mode. Derive per-team seeds from SHA-256 of the configured seed and team name,
+independently of iteration order, and restore NumPy's caller RNG state.
+
+Permutation games return vector-valued permanent cell costs. Sum each driver's
+cell impacts to obtain its permanent-unit impact. Use the same sampled cell
+values for salary/time/membership audits, without a separate exact recalculation
+or post-hoc rescaling. Every evaluated state must pass the same distribution,
+alignment and finite-cost checks as exact mode. Antithetic sampling preserves
+numerical efficiency; efficiency is not a claim of exact individual impacts.
+
+Run details record method, exhaustive strategy flag, requested cycles, effective
+seed, evaluation budget, model-row evaluations (including the two endpoint
+checks), distinct coalition count, extrema, runtime and numerical-check status.
+Approximate extrema cover evaluated states only. The `exhaustive` flag describes
+the strategy: even visiting every coalition with unequal sampling weights does
+not turn a permutation estimate into exact enumeration.
+
+Keep the eight salary-scenario matrices local to their synchronous game/audit.
+Both explainers reuse the shared costing contribution. Cost/state interfaces
+remain independent of estimation settings. The empirical accuracy assessment is
+an external artifact, not an additional notebook analysis or validation gate.
 
 For organizational cost, exploit exact Shapley additivity:
 
@@ -661,11 +687,12 @@ uncertainty intervals.
 # 17. Validation and external regression tests
 
 Use rtol=1e-10 and atol=1e-6 for costs without intermediate rounding. Every actual
-analysis performs source/model reconciliation by period/team/contract, exact-game
+analysis performs source/model reconciliation by period/team/contract, game
 efficiency checks, analytical M/K/L checks, parent replacement checks and both
 flattened-view reconciliations. Inactive branches have no artificial games.
-Every enumerated counterfactual has valid probabilities, aligned policies and
-finite costs, including when costs are negative.
+Every evaluated counterfactual has valid probabilities, aligned policies and
+finite costs, including when costs are negative. Exact mode additionally checks
+full coalition coverage. Approximate efficiency checks do not measure accuracy.
 
 Keep regression fixtures outside the user-facing notebook. Tests execute tagged
 implementation cells from the notebook, not a duplicated implementation or a
@@ -690,11 +717,15 @@ separate production module. Cover:
   and changed salary/time association with unchanged ordinary means;
 - employee entry/exit, contract transitions, promotions and cross-team matching;
 - sparse profile normalization, invalid indices, legacy-reference migration,
-  cached/direct salary equality and the 15-driver extension limit.
+  cached/direct salary equality and the 15-driver exact extension limit;
+- successful 20-driver permutation analysis, method metadata and sampled cell
+  reconciliation, same-seed/reversed comparisons and team-order independence;
+- preservation of external RNG state, invalid options, pinned-version cycle
+  counts, scalar/vector sampling agreement, signed costs and zero-change parents.
 
 Run fresh-kernel workflow tests with no configured input and with a small
-production-shaped test DataFrame injected into the input cell. Execute plots and
-diagnostics against negative endpoints. Executed fixture outputs remain temporary;
+production-shaped test DataFrame injected into the input cell. Exercise exact
+and permutation modes, including plots and diagnostics against negative endpoints. Executed fixture outputs remain temporary;
 do not embed example or real payroll results in the delivered notebook.
 
 Require PEP-8 style checks on notebook code/tests and docstrings on all named
@@ -719,8 +750,10 @@ Cell audits separately reconcile salary, worked fraction and within-cell base-pa
 membership to their full-game players. They share the registered salary costing
 formula and use M*K / L*K multipliers for organizational/local currency. By
 Shapley additivity and dummy-player invariance, additive payment players can be
-omitted from these marginal calculations; assertions compare against the full
-14-player game. Cells and employees are not additional players.
+omitted from exact marginal calculations; assertions compare against the full
+exact game. In permutation mode, reuse the sampled cell impacts from the parent
+game and assert their sum against that sampled player. Cells and employees are
+not additional players.
 
 Descriptive mean salary/time columns explain cell populations but are not the
 switched driver values. Retain coverage, fallback provenance and net/absolute

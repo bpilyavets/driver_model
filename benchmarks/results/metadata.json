@@ -1,0 +1,75 @@
+{
+  "seeds": 20,
+  "budgets": [
+    64,
+    256,
+    1024
+  ],
+  "cases": {
+    "existing_14": {
+      "drivers": 14,
+      "permanent_unit_a": 157.66666666666666,
+      "permanent_unit_b": 167.66666666666666,
+      "organization_a": 533.0,
+      "organization_b": 573.0,
+      "factors": {
+        "permanent_unit": 1,
+        "organization": 2.9999999999999987,
+        "local": 2.999999999999999
+      },
+      "exact_seconds": 6.17902141400009,
+      "component_reference_seconds": 0.5283389810001609
+    },
+    "stress_14": {
+      "drivers": 14,
+      "permanent_unit_a": 83976.25,
+      "permanent_unit_b": 149463.59999999998,
+      "organization_a": 926810.0000000001,
+      "organization_b": 1786635.9999999998,
+      "factors": {
+        "permanent_unit": 1,
+        "organization": 9.025342712846282,
+        "local": 9.060606060609643
+      },
+      "exact_seconds": 4.073267832000056,
+      "component_reference_seconds": 0.06895210799984852
+    },
+    "extended_20": {
+      "drivers": 20,
+      "permanent_unit_a": 52656.25,
+      "permanent_unit_b": 205196.4,
+      "organization_a": 676250.0,
+      "organization_b": 2343963.9999999995,
+      "factors": {
+        "permanent_unit": 1,
+        "organization": 9.025342712846282,
+        "local": 9.060606060609643
+      },
+      "exact_seconds": null,
+      "component_reference_seconds": 0.0831834919999892
+    },
+    "cubic": {
+      "drivers": 3,
+      "base": 0.0,
+      "end": 600.0
+    },
+    "quintic": {
+      "drivers": 5,
+      "base": 0.0,
+      "end": 600.0
+    },
+    "zero_net_cubic": {
+      "drivers": 3,
+      "base": 0.0,
+      "end": 0.0
+    }
+  },
+  "first_permutation_call_seconds": 3.802053980999972,
+  "total_seconds": 230.99983255799998,
+  "python": "3.10.12",
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+  "shap": "0.48.0",
+  "numpy": "1.26.4",
+  "pandas": "2.3.3",
+  "timing": "Payroll: median of 3 real validated runs; accuracy tables excluded"
+}
