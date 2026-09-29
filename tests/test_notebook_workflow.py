@@ -49,8 +49,17 @@ def test_notebook_style_and_docstrings(tmp_path):
 
 
 @pytest.mark.kernel
-@pytest.mark.parametrize("mode", [None, "exact", "permutation"])
-def test_fresh_kernel_input_workflow(tmp_path, mode):
+@pytest.mark.parametrize(
+    "mode, organization_view",
+    [
+        (None, "teams"),
+        ("exact", "teams"),
+        ("permutation", "teams"),
+        ("exact", "drivers"),
+        ("permutation", "drivers"),
+    ],
+)
+def test_fresh_kernel_input_workflow(tmp_path, mode, organization_view):
     """Run fresh kernels with empty and signed production-schema inputs."""
     configured = mode is not None
     notebook = nbformat.read(NOTEBOOK, as_version=4)
@@ -70,6 +79,9 @@ def test_fresh_kernel_input_workflow(tmp_path, mode):
     )
     if configured:
         encoded = frame.to_json(orient="records")
+        selected_driver = (
+            "bonus_kpi" if organization_view == "drivers" else None
+        )
         for cell in notebook.cells:
             if "user-input" in cell.metadata.get("tags", []):
                 cell.source = (
@@ -78,6 +90,8 @@ def test_fresh_kernel_input_workflow(tmp_path, mode):
                     'period_a = "2025-03"\n'
                     'period_b = "2025-04"\n'
                     'source_cost_column = "actual_cost"\n'
+                    f"organization_view = {organization_view!r}\n"
+                    f"selected_driver = {selected_driver!r}\n"
                     'selected_team = "Alpha"\n'
                     "make_plots = True\n"
                     "show_detailed_diagnostics = True\n"
@@ -91,6 +105,7 @@ def test_fresh_kernel_input_workflow(tmp_path, mode):
         "assert analysis['validation'].passed.all()\n"
         "assert analysis['upper']['base'] == -400\n"
         "assert analysis['upper']['end'] == -200\n"
+        "assert abs(analysis['driver_bridge'].impact.sum() - 200) < 1e-6\n"
         "assert analysis['periods'][0] == pd.Timestamp('2025-03-01')\n"
         if configured
         else "assert analysis is None\n"
@@ -117,6 +132,15 @@ def test_fresh_kernel_input_workflow(tmp_path, mode):
             if "image/png" in output.get("data", {})
         ]
         assert len(figures) == 2
+        rendered = json.dumps(outputs, ensure_ascii=False)
+        assert "LOCAL Alpha" in rendered
+        if organization_view == "drivers":
+            assert "Organizational driver bridge" in rendered
+            assert "ORGANIZATIONAL contributions by team" in rendered
+            assert "Selected driver total" in rendered
+        else:
+            assert "Organizational leaf bridge" in rendered
+            assert "Organizational driver bridge" not in rendered
     else:
         assert any(
             "Set input_df" in output.get("text", "") for output in outputs

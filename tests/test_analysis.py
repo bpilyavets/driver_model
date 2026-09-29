@@ -26,6 +26,10 @@ def test_complete_reconciliation_and_input_integrity(
     """Reconcile sparse payroll without changing the caller's records."""
     original = complete_frame.copy(deep=True)
     result = analyze(model, complete_frame, months)
+    pd.testing.assert_series_equal(
+        result["driver_bridge"].set_index("driver").impact,
+        result["bridge"].set_index("driver").impact,
+    )
     pd.testing.assert_frame_equal(original, complete_frame)
     assert result["periods"] == months
     assert result["permanent"]["Alpha"]["audit"]["coalitions"] == 16384
@@ -443,6 +447,10 @@ def test_registry_extension(model, months):
     result = analyze(model, frame, months, registry=registry)
     impacts = result["bridge"].set_index("driver").impact
     assert impacts["transport_allowance"] == pytest.approx(84)
+    summary = result["driver_bridge"].set_index("driver")
+    assert summary.loc["transport_allowance", "impact"] == pytest.approx(84)
+    assert summary.loc["transport_allowance", "label"] == "Transport allowance"
+    assert summary.index[-1] == "transport_allowance"
     assert result["permanent"]["Alpha"]["audit"]["coalitions"] == 32768
     assert "transport_allowance" in set(
         result["diagnostics"]["unsupported"].variable

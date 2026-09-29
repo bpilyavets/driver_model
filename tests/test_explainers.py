@@ -96,6 +96,9 @@ def test_permutation_hierarchy_cell_audits_and_repeatability(
         random_seed=73,
     )
     assert_rng_equal(rng, np.random.get_state())
+    summary = result["driver_bridge"].set_index("driver").impact
+    for driver, rows in result["bridge"].groupby("driver"):
+        assert summary[driver] == pytest.approx(rows.impact.sum(), abs=1e-6)
     a, b = result["states"]
     repeated = model["decompose"](
         a, b, explainer="permutation", n_permutations=16, random_seed=73
@@ -108,6 +111,13 @@ def test_permutation_hierarchy_cell_audits_and_repeatability(
     )
     np.testing.assert_allclose(
         result["bridge"].impact, -reverse["bridge"].impact, atol=1e-6
+    )
+    np.testing.assert_allclose(
+        result["driver_bridge"].impact, repeated["driver_bridge"].impact,
+    )
+    np.testing.assert_allclose(
+        result["driver_bridge"].impact, -reverse["driver_bridge"].impact,
+        atol=1e-6,
     )
     for key, table in [
         ("underlying_salary_level", "salary_cells"),

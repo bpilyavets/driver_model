@@ -212,6 +212,14 @@ team's cost change. Sum local team endpoint changes to recover the organization 
 but never combine organizational and local bridge rows: they allocate scale interactions
 differently. A one-team organization's bridge equals its local bridge, with zero team-mix impact.
 
+An optional aggregated-driver presentation sums organizational leaf impacts by
+driver across teams. Workforce scale and team mix remain separate rows. For a
+permanent driver \(k\), its organizational total is
+\(\sum_t M_t K_t \psi_{t,k}\).
+This is a summary of the same organizational bridge, not a pooled workforce
+model or another Shapley game. Its team breakdown uses organizational
+contributions exclusively; local impacts do not substitute for them.
+
 ---
 
 # 6. Permanent workforce model
@@ -419,8 +427,9 @@ diagnostics. All dates are explicit; no function assumes January/February.
 The caller's frame is unchanged. Without an independent source-cost column,
 permanent reference payroll is reconstructed and labeled accordingly.
 
-The result contains `bridge`, `local_bridges`, `hierarchy`, `permanent`, `upper`,
-`coalition_audit`, `states`, `periods`, `frame`, `team_summary`, `validation`,
+The result contains `bridge`, `driver_bridge`, `local_bridges`, `hierarchy`,
+`permanent`, `upper`, `coalition_audit`, `states`, `periods`, `frame`,
+`team_summary`, `validation`,
 `assumptions`, `diagnostics`, `explainer_config` and `elapsed_seconds`.
 
 States retain the original structure: organizational `workforce_scale`, complete
@@ -450,7 +459,10 @@ Interfaces remain separate:
   costs without historical comparison, automatic completion or SHAP.
 - `decompose(a, b, ...)` explains completed states; `reconcile(...)` and
   `diagnostics(...)` use the actual state periods, not notebook-wide defaults.
-- `report(analysis, team=None)` shows organizational results or one local team.
+- `report(analysis, *, team=None, organization_view="teams", driver=None,
+  plots=True)` shows organizational results or one local team. The default
+  organizational presentation is the team overview; `"drivers"` shows the
+  aggregated driver bridge and optional organizational team contributions.
   `show_diagnostics(analysis, details=False, team=None)` controls diagnostic detail.
 
 Employees are aligned inside state construction; no employee-level SHAP players
@@ -689,7 +701,9 @@ uncertainty intervals.
 Use rtol=1e-10 and atol=1e-6 for costs without intermediate rounding. Every actual
 analysis performs source/model reconciliation by period/team/contract, game
 efficiency checks, analytical M/K/L checks, parent replacement checks and both
-flattened-view reconciliations. Inactive branches have no artificial games.
+flattened-view reconciliations. The aggregated driver bridge also reconciles
+to the organizational cost change, and each driver total reconciles to its
+organizational leaf contributions. Inactive branches have no artificial games.
 Every evaluated counterfactual has valid probabilities, aligned policies and
 finite costs, including when costs are negative. Exact mode additionally checks
 full coalition coverage. Approximate efficiency checks do not measure accuracy.
@@ -745,6 +759,33 @@ Default output is an organizational overview waterfall, leaf table, team summary
 source-reference basis and compact validation/assumption summary. A selected team
 gets its local bridge and waterfall. Detailed salary/fallback diagnostics are
 opt-in. Tables and plots must handle negative A/B costs and signed effects.
+
+Set `organization_view = "drivers"` in the notebook input cell, or call
+`report(analysis, organization_view="drivers")`, for the optional driver table
+and waterfall. `analysis["driver_bridge"]`, returned by both `decompose` and
+`analyze_labor_cost`, stores one row per present organizational leaf driver in
+registry order, with registry labels, no team assignment, original endpoints
+and currency units. Sum signed impacts; retain active drivers with a zero net
+impact and omit drivers inactive across every team. Recompute shares against
+the organizational net change, leaving them undefined near zero. Intermediate
+parents are excluded. Keep this summary separate from the hierarchy and original
+bridges; adding a summary to its source rows would double-count impacts.
+
+In this presentation, counts are grouped by period and contract, and the driver
+table replaces the full team leaf table and team comparison. Source-reference
+information, attribution methods and validation/assumption output remain
+available. Exact and permutation summaries both reuse their calculated leaf
+impacts without new games, rescaling or changed workforce states.
+
+Optionally set `selected_driver` to a displayed driver identifier, or pass
+`driver=...` to `report`, for its signed organizational contributions by team and
+the matching aggregate total. This table does not use the selected driver's net
+impact as a percentage denominator, so offsetting teams remain interpretable.
+The selector requires the organizational drivers presentation and accepts only
+team-associated economics leaves present in the results. Unknown/inactive
+identifiers, parents, workforce scale, team mix and incompatible local/team-view
+selections raise a clear error. `selected_team` independently adds a **LOCAL**
+bridge with that team's endpoints and interaction allocations.
 
 Cell audits separately reconcile salary, worked fraction and within-cell base-pay
 membership to their full-game players. They share the registered salary costing

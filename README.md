@@ -11,8 +11,10 @@ source_cost_column = None
 ```
 
 Then **Run All**. The notebook shows the organizational bridge, team summary,
-validation and missing-economics assumptions. Set `selected_team` to a team name
-for its local bridge; enable `show_detailed_diagnostics` for salary/fallback audits.
+validation and missing-economics assumptions. Keep `organization_view = "teams"`
+for this default, or choose `"drivers"` for an aggregated driver report. Set
+`selected_team` to a team name for its separate local bridge; enable
+`show_detailed_diagnostics` for salary/fallback audits.
 There is no synthetic data generation or CSV loading. Ingestion is yours to supply.
 Without configured input, the notebook displays setup guidance rather than running
 an example. All implementation functions remain inside collapsible notebook cells.
@@ -87,6 +89,7 @@ bands are not identified geography. Regional-policy changes remain outside scope
 
 ```python
 analysis["bridge"]          # Organizational leaf impacts.
+analysis["driver_bridge"]   # Organizational impacts summed by driver.
 analysis["local_bridges"]   # Local bridges indexed by team name.
 analysis["team_summary"]    # Team endpoints and the two reporting views.
 analysis["assumptions"]     # Inactive, copied or referenced economics.
@@ -116,6 +119,42 @@ report(analysis)
 ```
 
 Use `help(analyze_labor_cost)` or other function docstrings for contracts and units.
+
+## Optional organizational driver summary
+
+The team overview remains the default. In the input cell, choose:
+
+```python
+organization_view = "drivers"
+selected_driver = "underlying_salary_level"  # Optional; None skips team detail.
+```
+
+The table and waterfall show one organizational impact per active driver,
+including separate Workforce scale and Team mix rows. Driver identifiers are
+shown in the table for selection. Counts are grouped by period and contract.
+The summary reuses the calculated organizational leaf impacts; workforce states
+remain team-conditional and no additional attribution games are run.
+
+The optional selector shows that economics driver's signed contributions by
+team and their matching aggregate total. It accepts team-associated leaf
+identifiers present in the results. Workforce scale, Team mix, intermediate
+parents and inactive drivers cannot be selected for this breakdown. A driver
+selection requires `organization_view = "drivers"`.
+
+`selected_team` independently adds a **LOCAL** team report. Its impacts use
+local interaction allocations and are not the contributions underlying the
+aggregated organizational driver. Do not combine either bridge with its summary.
+Active drivers with offsetting team impacts remain visible even when their
+aggregate is zero. Shares use the organizational net change and are undefined
+near zero; monetary amounts remain signed and unrounded in the result tables.
+
+After analysis, switch reports without rerunning decomposition:
+
+```python
+report(analysis, organization_view="drivers", driver="underlying_salary_level")
+report(analysis)  # Original team overview.
+report(analysis, team="Alpha")  # Separate local bridge; choose an actual team.
+```
 
 ## Choose the permanent-driver explainer
 
