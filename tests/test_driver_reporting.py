@@ -183,7 +183,7 @@ def test_report_view_and_waterfall(model, team_analysis, monkeypatch, view):
     assert "Attribution methods" in shown
     assert any("reference basis" in title for title in shown)
     assert "Organizational endpoints" in shown
-    counts = shown["Employee-month counts and exposure"]
+    counts = shown["Record counts, distinct employees and exposure"]
     if view == "drivers":
         pd.testing.assert_frame_equal(
             plotted, team_analysis["driver_bridge"]

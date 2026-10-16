@@ -88,7 +88,7 @@ Such variables must be grouped into one driver or derived inside the cost engine
 
 # 4. Level of source data vs level of decomposition
 
-The raw analytical dataset is stored at the **individual employee-month level**.
+The raw analytical dataset is stored at the **employee-month-employment-type level**.
 This granularity is necessary because employee-level records contain the information required to reconstruct:
 
 * employment type;
@@ -124,7 +124,7 @@ contribution within cells.
 The intended pipeline is therefore:
 
 ```text
-employee-month records
+employee-month-employment-type records
         ↓
 aggregate / derive workforce state
         ↓
@@ -224,7 +224,7 @@ contributions exclusively; local impacts do not substitute for them.
 
 # 6. Permanent workforce model
 
-The current employee-month payroll formula is:
+The actual payroll formula for each permanent employment-type row is:
 
 ```python
 cost = reg_coef * (
@@ -254,17 +254,22 @@ permanent drivers: five composition/salary/time drivers and nine separate paymen
 
 `vyrabotka_percent` is actual hours divided by planned hours. For example,
 100/160 is 0.625. It is not workforce exposure: a person can work zero hours
-and still be employed and receive sick-leave or vacation payments. Production
-exposure remains one per employee-month. The fraction multiplies base salary
-only; do not multiply other payments by it. Values above one are permitted.
+and still be employed and receive sick-leave or vacation payments. Default
+exposure is one per person-month, shared equally across their observed
+employment types. A selected source exposure column overrides this rule.
+The fraction multiplies base salary only; its product with salary already
+represents earned base pay. Do not multiply it by exposure again or apply
+it to other payments. Values above one are permitted.
 
 For each team-period, keep an aligned employee axis, pre-regional salary vector
 B, worked-fraction vector h, and sparse cell membership profiles w. Each profile
-contains employee indices and normalized exposure weights. At observed cells:
+contains employee indices, normalized exposure weights and positive base-pay
+conversion factors \(a\). Production adaptation sets \(a_i = 1/e_i\);
+canonical per-exposure inputs default to \(a_i = 1\). At observed cells:
 
 $$
 w_{i\mid t,r,g}=\frac{e_i}{\sum_{j\in(t,r,g)}e_j},\qquad
-S_{t,r,g}=\sum_i w_{i\mid t,r,g}B_i h_i.
+S_{t,r,g}=\sum_i w_{i\mid t,r,g}a_{i\mid t,r,g}B_i h_i.
 $$
 
 The permanent formula is:
@@ -285,10 +290,15 @@ The three separate complete business switches are:
 - `underlying_salary_level`: **Base salary changes**, now an employee vector.
 - `worked_hours`: **Proportion of planned hours worked**, now an employee vector.
 - `within_cell_workforce_mix`: **Within-cell workforce mix — base pay**, a complete
-  collection of normalized sparse profiles.
+  collection of normalized sparse profiles and their base-pay conversion
+  factors. These objects switch together as one driver.
 
-The membership driver affects base pay only. Supplemental payments retain their
-per-cell average definitions, which can still include changing membership.
+The membership driver affects base pay only, including conversion associated
+with exposure allocation. Salary and worked-fraction vectors stay observed;
+equal splitting cannot itself create raises or changed worked fractions.
+Supplemental payments retain per-cell, per-exposure definitions, which can
+include changing membership and allocation denominators. Reimbursement and
+payment impacts need not indicate a change in actual row payments.
 
 For one fixed employee and regional coefficient one, salary 100,000→110,000 and
 worked fraction 0.625→0.75 give a 20,000 increase. The isolated two-driver Shapley
@@ -309,7 +319,9 @@ The ratio does not distinguish changes in actual hours from changes in planned
 hours. Base-salary changes include promotion-related increases, decreases and
 other observed changes; the data do not identify their cause.
 
-Canonical salary and eligible payments are pre-regional currency per exposure.
+Salary stays the observed pre-regional rate; its product with worked fraction
+is converted per exposure by the profile factor. Canonical eligible payments
+are pre-regional currency per exposure.
 Signed payments stay signed. Apply the destination coefficient once to salary,
 sick/vacation/holiday/night pay and sharing/quarterly bonuses; leave KPI, overtime
 and other bundled pay unadjusted. Eligibility remains registry metadata.
@@ -392,11 +404,13 @@ Within a team:
 
 $$
 \bar S_t=\sum_{r,g}p_{r|t}p_{g|r,t}R_r
-\sum_i w_{i\mid t,r,g}B_i h_i.
+\sum_i w_{i\mid t,r,g}a_{i\mid t,r,g}B_i h_i.
 $$
 
 Composition weights count exposure. The payroll contribution is the profile's
-weighted mean of paired salary × worked fraction. This shared formula must be
+weighted mean of paired salary × worked fraction × conversion factor.
+With production factors 1/e_i, multiplying by the cell exposure recovers
+the sum of actual earned base pay. This shared formula must be
 used by standalone costing, exact attribution, cached salary scenarios and
 cell-impact audits. Attribution must not redefine payroll.
 
@@ -413,6 +427,7 @@ analysis = analyze_labor_cost(
     period_a,
     period_b,
     source_cost_column=None,
+    exposure_column=None,
     references=None,
     missing_economics="carry_observed",
     explainer="exact",
@@ -430,7 +445,8 @@ permanent reference payroll is reconstructed and labeled accordingly.
 The result contains `bridge`, `driver_bridge`, `local_bridges`, `hierarchy`,
 `permanent`, `upper`, `coalition_audit`, `states`, `periods`, `frame`,
 `team_summary`, `validation`,
-`assumptions`, `diagnostics`, `explainer_config` and `elapsed_seconds`.
+`assumptions`, `diagnostics`, `exposure_config`, `explainer_config` and
+`elapsed_seconds`.
 
 States retain the original structure: organizational `workforce_scale`, complete
 `team_mix`, `_teams` axis, and a dictionary of nested team economics. Each team
@@ -438,8 +454,12 @@ holds complete `contract_type_mix`, reimbursement rates and its permanent state.
 Permanent states hold fixed region/grade axes and coefficients, `_employees`,
 registered composition/payment matrices, employee salary/time vectors and
 `within_cell_workforce_mix`. Its keys are `(region_index, grade_index)`; values
-are `{"indices": integer_array, "weights": probability_array}`. Every aligned cell
-has a supported profile, even when its observed exposure is zero.
+are `{"indices": integer_array, "weights": probability_array,
+"base_pay_factors": positive_array}`. Factors align with the sparse indices,
+are finite and strictly positive, and switch with the complete membership
+driver. Existing aligned profiles without factors mean an array of ones;
+aggregate-only legacy references still fail. Every aligned cell has a
+supported profile, even when its observed exposure is zero.
 
 Unavailable economics are `None`, not zero unit rates. An observed absent whole
 team may have a `None` team state. Zero-share unknowns contribute zero cost;
@@ -617,8 +637,10 @@ salary/payment cells with zero or automatically borrow another team's pay.
 Disabling needed fallback must fail explicitly.
 
 Payment fallbacks are currency per exposure, pre-regional when eligible.
-Salary profiles contain dimensionless probabilities; employee salary inputs are
-pre-regional currency per exposure and worked fractions are dimensionless.
+Salary profiles contain dimensionless probabilities and positive conversion
+factors from the same donor rows. Employee salary inputs remain observed
+pre-regional rates and worked fractions are dimensionless. Canonical data
+already expressed per exposure defaults missing conversion factors to one.
 Signed payments remain signed through normalization, pooling and destination
 adjustment. Counts of zero indicate absence, not zero unit economics.
 
@@ -688,7 +710,8 @@ not manufacture employees or copy exposure into an absent period.
 Detailed value diagnostics contain `period`, `team`, `region`, `grade`, `variable`,
 `fallback_level`, `fallback_value`, `source_period` and, for employee vectors,
 `employee_id`. Profile provenance rows store normalization mass 1, not a salary
-or worker count; `membership_profiles` exposes the actual weights. Preserve all reference/copy
+or worker count; `membership_profiles` exposes weights and conversion
+factors. Preserve all reference/copy
 records, including later explicit refinements of an automatically copied team;
 cell audits use the final effective value/provenance. Coverage and maximum
 unsupported counterfactual exposure remain available. Support shares are not
@@ -787,6 +810,15 @@ identifiers, parents, workforce scale, team mix and incompatible local/team-view
 selections raise a clear error. `selected_team` independently adds a **LOCAL**
 bridge with that team's endpoints and interaction allocations.
 
+`exposure_config` identifies the equal-split assumption or selected source
+column. Normal reports include period totals for source records, distinct
+employees and assigned exposure. Contract-level distinct-person counts are not
+additive when people have multiple employment types; exposure is additive.
+`diagnostics["exposure_allocation"]` shows each row's type count, exposure and
+base-pay factor. Team/organization movement diagnostics deduplicate each
+employee-month/team membership; permanent matching still has one observation
+per person and period because the employment-type key is unique.
+
 Cell audits separately reconcile salary, worked fraction and within-cell base-pay
 membership to their full-game players. They share the registered salary costing
 formula and use M*K / L*K multipliers for organizational/local currency. By
@@ -802,7 +834,9 @@ support shares. Skip these audits for inactive permanent branches.
 
 `employee_alignment` records matching/carry decisions and donor periods/teams.
 `employee_inputs` records final effective vectors, including references and whole
-copied states; `membership_profiles` exposes their weights. Category references
+copied states; `membership_profiles` exposes their weights and conversion
+factors. Descriptive salary/time means omit conversion factors. Category
+references
 and copied economics are qualified by the assumptions/fallback tables. Matched
 records include salary/time changes, grades, region bands, transfers and sample
 entries/exits. They do not establish hiring dates or causes of salary changes.
@@ -855,11 +889,33 @@ optimizer remain separate. Do not implement optimization in this PoC.
 
 # 21. Production schema, signed values and notebook workflow
 
-`adapt_production(frame, *, source_cost_column=None, registry=...)` copies a Pandas
-DataFrame. Production exposure is one per employee-month. `vyrabotka_percent` is a
-nonnegative factor (0.8 = 80%; values above one are allowed), not an integer
-percentage or an extra availability weight. Canonical non-unit exposure remains
-supported with monetary inputs per exposure and source totals including exposure.
+`adapt_production(frame, *, source_cost_column=None, exposure_column=None,
+registry=...)` copies a Pandas DataFrame. Keys are month, employee and employment
+type; all rows for one employee-month must share a team. `resolve_exposure`
+isolates the assignment policy. With no selected column, each observed type gets
+1/k of the person's monthly workforce unit, where k is the number of distinct
+types that month. Presence depends on records, including zero and signed pay.
+This is an allocation assumption, not a measurement of FTE or working time.
+
+An explicitly selected `exposure_column` supplies finite values in (0, 1] per
+row. Use them as supplied without normalizing employee totals to one; totals
+below or above one are permitted. Invalid values never fall back to equal
+splitting. An unselected source exposure column has no effect. Canonical input
+callers continue to supply their own exposure, without automatic assignment.
+
+Production payments and source costs are actual amounts for each employment-type
+row. Save source totals before dividing registered supplemental payments and
+contract reimbursements by exposure. Do not divide base salary or worked fraction;
+set canonical `base_pay_factor` to 1/exposure on permanent rows and use it in
+sparse membership profiles. This preserves source payroll and employee pairing.
+The coefficient is still applied exactly once. Salary/time unchanged across
+periods must retain zero impacts even when exposure allocation changes.
+
+`vyrabotka_percent` is nonnegative (0.8 = 80%; values above one are allowed), not
+an integer percentage or an extra availability weight. Its product with salary
+already gives earned base pay before regional adjustment. Canonical data with
+per-exposure economics defaults an omitted `base_pay_factor` to one, preserving
+existing standalone costing and reference behavior.
 
 | Production column | Canonical field |
 |---|---|
@@ -884,8 +940,8 @@ supported with monetary inputs per exposure and source totals including exposure
 | pkc_pay | outsourced reimbursement/source reference |
 
 Required identifiers are nonempty strings, periods are timezone-naive month starts,
-and employee-month pairs are unique. Keep the schema columns even if a contract
-category is absent; inapplicable row values may be null. Applicable monetary values
+and month/employee/employment-type triples are unique. Keep schema columns
+even if a contract category is absent; inapplicable row values may be null. Applicable monetary values
 must be finite and nonmissing but **may be negative**. This includes all payment
 components, contract reimbursements, source totals, monetary references and derived
 costs. Never clip, take absolute values or replace negative amounts with zero.
@@ -898,7 +954,8 @@ monthly net payroll, including reversals; a negative source total still needs ex
 
 Without `source_cost_column`, permanent payroll is reconstructed using section 6
 and other contract references use gpd_pay/pkc_pay. An independent source column
-covers all employee-months and is never altered by regional normalization.
+covers all employment-type rows and is never altered by exposure or regional
+normalization.
 For a newly registered payment beyond the known production formula, supply its
 canonical source column and an independent source total including the addition;
 one registry entry handles state construction, costing and attribution.

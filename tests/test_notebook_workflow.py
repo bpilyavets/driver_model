@@ -50,16 +50,22 @@ def test_notebook_style_and_docstrings(tmp_path):
 
 @pytest.mark.kernel
 @pytest.mark.parametrize(
-    "mode, organization_view",
+    "mode, organization_view, exposure_basis",
     [
-        (None, "teams"),
-        ("exact", "teams"),
-        ("permutation", "teams"),
-        ("exact", "drivers"),
-        ("permutation", "drivers"),
+        (None, "teams", "single"),
+        ("exact", "teams", "single"),
+        ("permutation", "teams", "single"),
+        ("exact", "drivers", "single"),
+        ("permutation", "drivers", "single"),
+        ("exact", "teams", "equal_split"),
+        ("permutation", "drivers", "equal_split"),
+        ("exact", "drivers", "source"),
+        ("permutation", "teams", "source"),
     ],
 )
-def test_fresh_kernel_input_workflow(tmp_path, mode, organization_view):
+def test_fresh_kernel_input_workflow(
+    tmp_path, mode, organization_view, exposure_basis,
+):
     """Run fresh kernels with empty and signed production-schema inputs."""
     configured = mode is not None
     notebook = nbformat.read(NOTEBOOK, as_version=4)
@@ -77,6 +83,18 @@ def test_fresh_kernel_input_workflow(tmp_path, mode, organization_view):
             ),
         ]
     )
+    exposure_column = None
+    expected_exposure = [1, 1]
+    if exposure_basis != "single":
+        temporary = pd.DataFrame([
+            payroll_row(period, "p", contract="ГПД", rate=0)
+            for period in ("2025-03-01", "2025-04-01")
+        ])
+        frame = pd.concat([frame, temporary], ignore_index=True)
+    if exposure_basis == "source":
+        exposure_column = "observed_exposure"
+        frame[exposure_column] = [0.2, 0.7, 0.4, 0.5]
+        expected_exposure = [0.6, 1.2]
     if configured:
         encoded = frame.to_json(orient="records")
         selected_driver = (
@@ -90,6 +108,7 @@ def test_fresh_kernel_input_workflow(tmp_path, mode, organization_view):
                     'period_a = "2025-03"\n'
                     'period_b = "2025-04"\n'
                     'source_cost_column = "actual_cost"\n'
+                    f"exposure_column = {exposure_column!r}\n"
                     f"organization_view = {organization_view!r}\n"
                     f"selected_driver = {selected_driver!r}\n"
                     'selected_team = "Alpha"\n'
@@ -103,10 +122,14 @@ def test_fresh_kernel_input_workflow(tmp_path, mode, organization_view):
                 )
     final_check = (
         "assert analysis['validation'].passed.all()\n"
-        "assert analysis['upper']['base'] == -400\n"
-        "assert analysis['upper']['end'] == -200\n"
+        "np.testing.assert_allclose(\n"
+        "    [analysis['upper']['base'], analysis['upper']['end']],\n"
+        "    [-400, -200], rtol=1e-10, atol=1e-6)\n"
         "assert abs(analysis['driver_bridge'].impact.sum() - 200) < 1e-6\n"
         "assert analysis['periods'][0] == pd.Timestamp('2025-03-01')\n"
+        "np.testing.assert_allclose(\n"
+        "    [s['workforce_scale'] for s in analysis['states']],\n"
+        f"    {expected_exposure!r}, rtol=1e-10, atol=1e-6)\n"
         if configured
         else "assert analysis is None\n"
     )
@@ -134,6 +157,8 @@ def test_fresh_kernel_input_workflow(tmp_path, mode, organization_view):
         assert len(figures) == 2
         rendered = json.dumps(outputs, ensure_ascii=False)
         assert "LOCAL Alpha" in rendered
+        assert "Workforce exposure policy" in rendered
+        assert "exposure_allocation" in rendered
         if organization_view == "drivers":
             assert "Organizational driver bridge" in rendered
             assert "ORGANIZATIONAL contributions by team" in rendered

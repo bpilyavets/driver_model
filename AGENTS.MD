@@ -91,7 +91,7 @@ Whenever changing driver architecture, verify this property explicitly.
 
 Input data may be assumed to be available as Pandas DataFrames.
 
-The source data are stored at **individual employee-month level**, but the decomposition model is **not employee-level**. Employee records are inputs used to construct aggregated period-level workforce states such as workforce exposure, contract mix, regional mix, grade composition within region, and employee-aligned salary/time inputs with sparse within-cell membership profiles.
+The source data are stored at **employee-month-employment-type level**, but the decomposition model is **not employee-level**. Employee records are inputs used to construct aggregated period-level workforce states such as workforce exposure, contract mix, regional mix, grade composition within region, and employee-aligned salary/time inputs with sparse within-cell membership profiles.
 
 Do not run SHAP directly over employees or interpret the sum of employee-level attributions as workforce-composition effects unless explicitly requested.
 
@@ -135,9 +135,10 @@ Do not implement an optimizer unless explicitly requested.
   diagnostics. Hide implementation cells where the viewer supports it. Do not
   add a separate production module, synthetic generator, automatic CSV loading
   or demonstration outputs to this user workflow.
-* Employee-month records have exactly one team. Sharing bonuses belong to that
-  team. Employee IDs align salary/time observations, including transfers, but
-  are never Shapley players.
+* Keys are month/employee/employment type. All rows for an employee-month
+  have exactly one team. Sharing bonuses belong to that team. Employee IDs
+  align salary/time observations, including transfers, but are never
+  Shapley players.
 * Preserve the organizational N * sum(team_share * team_unit_cost) hierarchy,
   nested team-unit and permanent games, and separate local team bridges. Never
   combine organizational and local impacts. Switch complete probability vectors
@@ -159,8 +160,23 @@ Do not implement an optimizer unless explicitly requested.
   applicable amounts remain errors, not an absent-population fallback case.
 * Base salary and regional coefficients stay strictly positive. Worked time
   stays nonnegative (values above one allowed); exposure and probability bounds
-  remain unchanged. Production exposure is one; no extra availability multiplier
-  belongs in its employee-month payroll formula.
+  remain unchanged. Default exposure is 1/k across the person's k observed
+  employment types in that month. An explicit exposure_column bypasses this
+  policy with validated (0, 1] row values; never renormalize supplied totals.
+  Keep assignment in one helper, outside costing and attribution.
+* Production payroll contains actual amounts per employment-type row. Preserve
+  source totals before normalization. Divide registered supplemental payments
+  and reimbursements by exposure. Keep observed salary/time unchanged; use
+  base_pay_factor=1/exposure in permanent membership profiles instead.
+* Profile base_pay_factors switch with the complete membership collection.
+  Validate them as positive finite aligned arrays, separately from normalized
+  weights. Canonical per-exposure inputs and older aligned profiles/references
+  default missing factors to one. Do not add a Shapley player. Descriptive
+  salary/time means never apply these factors.
+* Report exposure policy, source-row counts, distinct people and exposure
+  separately. Deduplicate employee-month/team membership for movements.
+  Expose allocation and factors in diagnostics. Supplemental payment impacts
+  describe per-exposure economics, including allocation-driven changes.
 * Follow the production mappings and formula in the methodology. Apply regional
   adjustment once to salary, sick/vacation/holiday/night pay and sharing/quarterly
   bonuses. KPI, overtime and other bundled pay are unadjusted. Signed normalization

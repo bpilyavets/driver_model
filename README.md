@@ -1,13 +1,14 @@
 # Labor-cost analysis — bring your own DataFrame
 
 Open [labor_cost_decomposition.ipynb](labor_cost_decomposition.ipynb), load your
-employee-month DataFrame, and edit **Your data and settings**:
+employee-month-employment-type DataFrame, and edit **Your data and settings**:
 
 ```python
 input_df = production_df
 period_a = "2026-01"
 period_b = "2026-02"
 source_cost_column = None
+exposure_column = None  # Or the name of a source exposure column.
 ```
 
 Then **Run All**. The notebook shows the organizational bridge, team summary,
@@ -42,7 +43,9 @@ Keep the production names, including `mdm_employee_rk_hash`,
 `lvl7_mapped_management_unit_nm` and `motivation_type` (ТК/ГПД/ПКЦ).
 Temporary and outsourced payroll use `gpd_pay` and `pkc_pay`.
 
-- One employee-month row, with one recorded team; month-start periods.
+- One row per month, employee and employment type; month-start periods.
+  All employment-type rows for one employee-month must share a team.
+  Duplicate rows of the same employment type are errors.
 - Payment components and payroll totals may be negative. Applicable values must
   still be numeric, finite and present. Inapplicable values may be null.
 - `base_stavka` and `reg_coef` must be positive. `vyrabotka_percent` is nonnegative:
@@ -50,14 +53,46 @@ Temporary and outsourced payroll use `gpd_pay` and `pkc_pay`.
 - Eligible payment amounts are pre-regional. Salary, sick leave, vacation, holiday,
   night shift, sharing and quarterly pay receive the coefficient once. KPI,
   overtime and other bundled pay are unadjusted.
-- Production exposure is one. Do not add another availability multiplier.
-  `vyrabotka_percent` is actual/planned hours and multiplies base salary only;
-  it is not workforce exposure and does not scale sick leave or other payments.
+- Default workforce exposure is split equally across each employee's observed
+  employment types in that month: one type gets 1, two get 0.5 each, three
+  get one third each. Presence depends on records, including zero/signed pay.
+- `vyrabotka_percent` is actual/planned hours. Salary times this fraction
+  already gives earned permanent base pay before regional adjustment.
+  All applicable payments are actual amounts for that employment-type row.
+  Exposure allocation does not reduce those amounts again.
 
-If you have an independent employee-month total, set `source_cost_column` to its
+If you have an independent total for each employment-type row, set
+`source_cost_column` to its
 column name. Otherwise permanent payroll is reconstructed and labeled accordingly;
 its reconciliation verifies aggregation, not independent payroll completeness.
 Negative independent totals must still be explained by their components.
+
+## Workforce exposure policy
+
+Equal splitting is an allocation assumption, not measured FTE or worked time.
+For a person earning 50,000 permanently and 30,000 temporarily in the same
+month, the default exposure is 0.5 per row, workforce total 1 and payroll 80,000.
+
+When real exposure is available, set `exposure_column = "your_column"`, or pass
+that keyword to `analyze_labor_cost` / `adapt_production`. Values must be finite
+and in `(0, 1]` per row. They are used directly: employee totals below or above
+one are permitted, and missing/invalid values never fall back to equal shares.
+An unselected exposure column has no effect. The assignment rule is isolated
+in `resolve_exposure`; costing and attribution do not select an exposure policy.
+
+The adapter preserves actual source totals and converts payments/reimbursements
+to currency per exposure. Observed salary and worked fraction remain unchanged.
+Sparse membership profiles carry `base_pay_factors = 1 / exposure`, switched
+with workforce mix, to preserve earned base pay without inventing raises or
+time changes. Existing canonical per-exposure inputs and older aligned profiles
+without factors retain factor-one behavior. Payment/reimbursement impacts can
+reflect changed allocation denominators as well as changed actual payments.
+
+Normal reports show `analysis["exposure_config"]` and period totals distinguishing
+source records, distinct employees and exposure. Category distinct-person counts
+are not additive across employment types; exposure is additive. Detailed
+`diagnostics["exposure_allocation"]` shows row assignments and type counts, and
+`diagnostics["membership_profiles"]` includes the effective base-pay factors.
 
 ## Missing contracts and teams
 
