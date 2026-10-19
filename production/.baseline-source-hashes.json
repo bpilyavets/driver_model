@@ -1,0 +1,17 @@
+{
+  "AGENTS.MD": "a419d1ae4c6333e99ee32bfe4a64d95845e39b95e29cac9eb082f15e859dff55",
+  "README.md": "b1a8b27e42774954f7fd1707eec63747e8a2cabd0fcc0282301ee7bc48b88996",
+  "pytest.ini": "a26d8e2b09cb456ce45955c6dc086b34e378841734561da0147dda678eb1c0c1",
+  "labor_cost_decomposition.ipynb": "03ca24c1e13bbca01587d1c95fe040ebf4a1021f5c9f9e3940fda712d94aea81",
+  "benchmarks/explainer_accuracy.py": "4bc162ca7644d914def0b9cda99e79721351ac6e964d9ccb10e5a96710977c8f",
+  "docs/labor-cost-decomposition.md": "bbe61d8588296b06a89bb5a27a0a6e5db31249128607f47236bb6fcb79d88b5a",
+  "docs/explainer-accuracy.md": "5a5a2af7a1a8fc620b57dc7afbf95713e1614dd92be6448858bf38190bd9db68",
+  "tests/conftest.py": "d9143f942ea18e4efd808fc06241b5abca845042b198b31e0560f2e647f58fcf",
+  "tests/test_exposure.py": "f48cbdc69b51e924a66ee934d9362124bbb82eff0552f0d8de0107b47764fc71",
+  "tests/test_shap_semantics.py": "2563fbad6a81f9f74cafa76e72a7c002ebb41f7a55a1adc224a4c4a64d329043",
+  "tests/test_analysis.py": "1b45d3dd27583e19912899553caf71e218444379b6f830d1f4133fb4f9f82878",
+  "tests/test_explainers.py": "68cdec49cb165a91ed52e2b6f55373ab6d75e0c528e4f424b998c0c07a11aecf",
+  "tests/test_salary_time.py": "745862fd04c9822a457d91d61b2dfcaf9ff924989f7dd5be63d9a779dfc59d5c",
+  "tests/test_driver_reporting.py": "e015a38cf7324bf64cc928c67228e2f7cfc81d3b3304932666bedbd9e0e66686",
+  "tests/test_notebook_workflow.py": "32b2774bac4bdedbe6f81b6c407d3cf9073a6abc8eff66e24cc2da1f14743ab8"
+}
