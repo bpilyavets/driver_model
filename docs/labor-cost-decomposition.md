@@ -1,5 +1,107 @@
 # Labor Cost Decomposition Methodology
 
+## Scope and status
+
+This document defines analytical requirements for the production library
+and the preserved built-in labor-cost template. Requirements are not
+suggestions. Implementation coverage is tracked separately in the
+[architecture gap register](../production/docs/architecture-gaps.md);
+missing checks or diagnostics must not be treated as waived requirements.
+
+The active implementation is the installable package under `production/`.
+There are three distinct execution paths:
+
+| Path | Contract and implementation |
+| --- | --- |
+| `labor_cost.analyze(model, dataset, request)` | Production graph runtime for v1/v2 declarations; returns `AnalysisResult`. |
+| `labor_cost.analyze_labor_cost(...)` | Extracted legacy engine; returns the original dictionary contract. |
+| PoC notebook | Preserved implementation and read-only regression oracle; includes its own presentation helpers. |
+
+The production runtime never imports or executes notebook cells. New
+analyst models use v2 graph declarations. V1 declarations remain supported
+through graph compilation; they are not the same execution path as the
+legacy dictionary API.
+
+Use these scopes when reading the retained numbered sections:
+
+| Sections | Scope |
+| --- | --- |
+| 1–4, 13, 19 | General analytical principles; template examples are illustrative. |
+| 5–10 | Built-in template formulas, composition choices and identification assumptions. Bridge separation and paired arithmetic also apply generally. |
+| 11–12 | Production interfaces/declarations, with separately labeled legacy contracts. |
+| 14–15 | General estimator/propagation rules plus template-specific player counts and M/K/L formulas. |
+| 16 | General completion rules; template defaults and legacy reference schema explicitly separated. |
+| 17–18 | Required validation/reporting, actual graph availability and legacy presentation. |
+| 20 | Future planning boundary; no optimizer is implemented. |
+| 21 | Built-in source mappings and legacy adapter/notebook workflow. |
+
+The numbered headings retain their existing anchors. For executable
+analyst examples, start with the
+[permanent/temporary walkthrough](../production/examples/GUIDE.MD) and
+[authoring reference](../production/docs/model-authoring.md). The
+[bundle contract](../production/docs/run-bundles.md) specifies portable
+outputs; internal state objects are not a dashboard interface.
+
+## General declaration and interpretation contract
+
+The source grain is fixed: employee × employment type × month, with unique
+keys and exactly one team per employee-month. Models map source columns
+and declare their own employment populations, categorical dimensions,
+applicable fields, units and value constraints. Grade, region and the
+original payroll columns are not mandatory for every model.
+
+The analyst declares four separate layers:
+
+1. Scoped actual-row formulas and constraints (`RowCost`, `FieldSpec`).
+2. Workforce representations (`Factor` distributions, aligned inputs,
+   sparse memberships, payments, policies and exposure totals).
+3. Aggregate cost expressions over those state factors.
+4. Whole-object interventions and nested explanations (`Switch`, `Game`).
+
+Compilation validates the supported grammar, units, axes and ownership.
+It does not infer a business interpretation, train a model or run Shapley.
+Analysis supplies data and periods, constructs states and evaluates games.
+Supported arithmetic is finite constants, addition, subtraction and
+multiplication, plus named-axis sum/selection and aligned aggregation.
+New operations require engine extensions; arbitrary callbacks are not a
+v2 model-declaration mechanism.
+
+Jupyter formula previews render these declaration trees without data or
+attribution. `render_formula` supports unfinished expressions;
+`render_model` presents a compiled equation sheet. Short display symbols
+and legends are separate notebook settings, not economic declarations or
+model identity. Rendering retains conditional distributions, paired
+products and membership conversion factors. A preview does not establish
+business correctness or reconciliation against source data. See the
+[notation contract](../production/docs/model-authoring.md#mathematical-previews).
+
+Conditional distributions are chosen explicitly: for example,
+`P(region) * P(grade|region)` and `P(grade) * P(region|grade)` can reproduce
+the same endpoints while defining different attribution games. A complete
+conditional table is one state object, not one game per conditioning row.
+Grouping factors into one switch is also an explicit modeling choice.
+Nested boundaries must be affine in each scalar child cost; shared state
+ownership across child boundaries is rejected. Organization costs remain
+additive by team. The standard N/team-share outer game is a reusable
+choice, not the only supported aggregate expression.
+
+Membership represents which employee profiles contribute to an average,
+with their weights and exposure conversions. It affects the entire
+expression inside `aligned_mean`: base pay only in the built-in template,
+but potentially bonuses or temporary payroll in another model. Aligned
+input switches describe changes to matched employee inputs under the
+recorded carry assumptions. They do not absorb all changes in population
+averages caused by entry, exit or movement. Identity itself has no causal
+payroll effect. Redistributing membership impacts among rate/hour/bonus
+players would require a different counterfactual definition; it is not
+part of the current methodology.
+
+All models must preserve paired products, whole probability switches,
+signed amounts where declared, separate organizational/local allocations
+and explicit unknown economics. The code's current reconciliation gaps
+are identified in section 17; compilation and aggregate efficiency alone
+do not prove that every population's cost formula is correct.
+
 ## 1. Objective
 
 The tool explains the change in total labor cost between two observed periods:
@@ -89,7 +191,9 @@ Such variables must be grouped into one driver or derived inside the cost engine
 # 4. Level of source data vs level of decomposition
 
 The raw analytical dataset is stored at the **employee-month-employment-type level**.
-This granularity is necessary because employee-level records contain the information required to reconstruct:
+For the built-in template, these records contain the information needed
+to reconstruct the following fields. Custom models declare their own
+applicable inputs at the same fixed grain:
 
 * employment type;
 * workforce exposure;
@@ -166,6 +270,10 @@ But employee identity is not itself a SHAP player in the primary workforce-cost 
 
 # 5. Workforce hierarchy and the two reporting views
 
+**Scope: built-in template hierarchy.** Custom v2 games may use other
+permitted structures. The distinction between organizational and local
+bridges applies to every model.
+
 Teams are operationally distinct. Each employee-month has exactly one recorded team;
 sharing bonuses are charged to that team. Team names identify branches exactly: upstream
 renames/reorganizations need an explicit crosswalk if they should represent the same team.
@@ -224,6 +332,9 @@ contributions exclusively; local impacts do not substitute for them.
 
 # 6. Permanent workforce model
 
+**Scope: built-in labor-cost template**, in either declaration schema.
+Custom models declare their own row and aggregate formulas.
+
 The actual payroll formula for each permanent employment-type row is:
 
 ```python
@@ -244,13 +355,18 @@ month, without amortization. Sharing is a distinct payment to the employee's rec
 not a transfer to the team receiving help. Other bundled pay is an explicit source component,
 not a residual inserted to force reconciliation.
 
-The permanent cost engine must stay extensible: payroll contributions and their regional
-eligibility belong in the driver registry, not in SHAP or reporting code. There are 14 current
-permanent drivers: five composition/salary/time drivers and nine separate payment drivers.
+Payroll contributions and regional eligibility belong in model declarations,
+not in SHAP or reporting code. The compatibility implementation uses its
+driver registry; v1 is lowered to the same graph primitives used by native
+v2 declarations. The unextended template has 14 permanent drivers: five
+composition/salary/time drivers and nine separate payment drivers.
 
 ---
 
 # 7. Employee-aligned base salary and worked fraction
+
+**Scope: built-in template.** Its specific base-pay membership boundary
+and labels do not restrict other v2 models.
 
 `vyrabotka_percent` is actual hours divided by planned hours. For example,
 100/160 is 0.625. It is not workforce exposure: a person can work zero hours
@@ -326,9 +442,13 @@ Signed payments stay signed. Apply the destination coefficient once to salary,
 sick/vacation/holiday/night pay and sharing/quarterly bonuses; leave KPI, overtime
 and other bundled pay unadjusted. Eligibility remains registry metadata.
 
-`normalize_regional_inputs(frame, already_regionalized=(...))` divides identified
+The legacy helper `normalize_regional_inputs(frame, already_regionalized=(...))`
+divides identified
 eligible inputs by their source coefficient before building vectors/profiles or
 fallbacks. Apply it once, preserving an already-correct source payroll total.
+
+This helper is not a top-level graph API. Graph template inputs must
+already satisfy the documented pre-regional source contract.
 
 Production coefficient bands are not identified geography. Fixed coefficient
 policy remains an assumption; differing A/B coefficient schedules fail explicitly.
@@ -336,6 +456,9 @@ policy remains an assumption; differing A/B coefficient schedules fail explicitl
 ---
 
 # 8. Grade and salary identification
+
+**Scope: identification limits of the built-in template dataset.** Other
+models must likewise avoid attributing effects to unobserved economics.
 
 Grades determine permitted salary ranges, but employees can occupy different positions within those ranges.
 
@@ -375,6 +498,9 @@ components. A promotion does not establish what portion of a raise it caused.
 
 # 9. Team-conditional, region-first composition
 
+**Scope: built-in template factorization.** V2 also supports grade-first
+or other declared acyclic conditional distributions.
+
 For permanent workers in team t, deliberately parameterize:
 
 $$
@@ -400,6 +526,9 @@ Keep provenance and matched-employee diagnostics beside the bridge.
 
 # 10. Salary composition identity
 
+**Scope: built-in salary contribution.** The general requirement is to
+share cost arithmetic between costing, attribution and audits.
+
 Within a team:
 
 $$
@@ -418,8 +547,58 @@ cell-impact audits. Attribution must not redefine payroll.
 
 # 11. Workforce states and the DataFrame entry point
 
-The notebook contains the complete implementation and one user input/settings cell.
-It neither generates demonstration data nor loads a CSV. The usual entry point is:
+## Production graph API
+
+Use the installed `labor_cost` package. Public interfaces are:
+
+| Interface | Responsibility |
+| --- | --- |
+| `compile_model(spec)` | Validate declarations and return an inspectable `CompiledModel`. |
+| `DatasetSnapshot(id, version, frame)` | Own a copied source frame and fingerprint. |
+| `AnalysisRequest(period_a, period_b, ...)` | Select periods, source reference, exposure/completion overrides and estimator settings. |
+| `analyze(model, dataset, request)` | Adapt source, construct/complete states, cost, attribute and assemble `AnalysisResult`. |
+| `build_state(model, dataset, period, ...)` | Observed-only state construction; no comparison-month borrowing. |
+| `cost(state, model)` | Pure signed cost evaluation; no historical completion or SHAP. |
+| `publish_model(..., validated_result=...)` | Write model JSON after a matching successful validation run. |
+| `Catalog(path)` | Resolve explicit model/dataset versions from filesystem configuration. |
+| `export_run(result, destination)` / `load_run(path)` | Write/read portable tables and metadata without executing stored model code on load. |
+
+Period selection includes all teams before alignment. Team selection
+occurs only through `result.select_teams(...)`; it does not change employee
+matching or recalculate a filtered-population game. `AnalysisRequest` has
+no team filter. Caller DataFrames remain unchanged.
+
+`result.table(name)` provides tables; `result.manifest` identifies the
+model, dataset, policies, reference values, engine and estimator settings.
+`result.states` is optional in-memory inspection data. Graph states carry
+typed tensors/profiles and model identity, not the legacy `_employees` /
+registry dictionary schema below. Supply the matching model to cost a
+custom state. Exported runs deliberately omit internal state objects.
+
+Four version concepts are independent:
+
+| Identity | Current example |
+| --- | --- |
+| Package / engine version | `0.2.0` |
+| Model declaration schema | Legacy v1 or explicit graph schema 2 |
+| Analyst model version | Built-in `1.0.0` (v1) / `2.0.0` (native v2); custom versions are analyst-assigned |
+| Bundle schema | 2 for new exports; schema 1 remains readable |
+
+`labor_cost_model()` retains its v1 default and fingerprint.
+`labor_cost_model(schema_version=2)` selects the native graph template.
+Both use `analyze`'s graph runtime. Publication binds a model fingerprint
+to a validation run; it is not proof of business correctness or a registry
+service. Catalog paths resolve relative to their JSON index. Source data
+acquisition remains the caller's responsibility.
+
+## Legacy dictionary and notebook interfaces
+
+The remainder of this section describes `analyze_labor_cost` and the
+preserved notebook, not modern `AnalysisResult` or graph state formats.
+The notebook contains its own complete legacy implementation and one
+input/settings cell. The installed compatibility API uses extracted
+package code without loading the notebook. Its entry point is:
+
 
 ```python
 analysis = analyze_labor_cost(
@@ -466,7 +645,8 @@ team may have a `None` team state. Zero-share unknowns contribute zero cost;
 positive-share unknowns fail. The comparison builder completes the economics
 needed by A/B counterfactuals before running any games.
 
-Interfaces remain separate:
+Legacy implementation interfaces remain separate (these are not all
+top-level package exports, and `report` belongs to notebook presentation):
 
 - `make_policy(frame)` aligns axes; teams with no permanent observations need no
   permanent policy unless an explicit reference supplies one.
@@ -492,19 +672,27 @@ or separate employee attribution bridge are introduced.
 
 # 12. Driver registry
 
-Business-driver definitions should be centralized.
+**Production graph:** centralize each model's source, factor, expression
+and switch declarations in its `ModelSpec`. `Factor` builds a whole state
+object; `Switch` identifies the intervention; `Game` specifies its cost
+expression and child boundaries. Labels do not define economic behavior.
+New supported drivers should not require unrelated reporting edits.
 
-The exact implementation is flexible, but adding a driver should ideally require declaring:
+Population IDs, source category values and game IDs are distinct. For
+example, `Population("gpd", {"employment_type": "temporary"})` selects
+source rows containing `temporary`; a partition lists member `gpd` and
+`select(mix, "kind", "gpd")` selects that share. A corresponding game may
+be named `temp_game`, so its parent refers to `child("temp_game")`.
+`FieldSpec.source` maps a source column, while `Factor.source` for an
+aligned factor names a declared field. Compile checks cannot infer which
+business names the analyst intended.
 
-* name;
-* label;
-* level / parent;
-* state value builder or state key;
-* payroll cost contribution, where applicable;
-* whether that contribution receives the regional coefficient;
-* optionally validation/fallback behavior.
-
-The generic SHAP engine should discover the applicable drivers from this registry rather than duplicating hard-coded driver lists throughout the codebase.
+**V1 / compatibility:** the original registry specifies names, labels,
+parents, state builders, cost contributions and regional eligibility.
+Its default IDs/order remain part of compatibility behavior. V1 authoring
+retains its original restrictions; use v2 for different populations,
+conditioning or nested games. New mathematical operations need explicit
+engine extensions and semantic validation, not arbitrary v2 callbacks.
 
 ---
 
@@ -533,16 +721,26 @@ For small driver sets, exact Shapley enumeration is preferred.
 
 # 14. Exact and sampled hierarchical games
 
-The permanent model has 14 drivers. Its estimator is selectable through
-`analyze_labor_cost` and `decompose`; organizational/team-unit/local games and
-auxiliary multipliers remain exact because their games have only 2–4 drivers.
-The reduced organizational term games also stay exact regardless of team count.
+**General graph rules:** `AnalysisRequest.explainer` selects the leaf-game
+estimator. Parents and auxiliary multiplier games remain exact and must
+fit the exact-game safeguard; a large parent must be simplified rather
+than silently sampled. Stable seeds incorporate game/team identity (the
+built-in permanent game preserves its legacy team seed). Conditional axes
+alone do not create child games. Exact and sampled games use the same cost
+expressions and valid whole-object interventions.
+
+**Built-in / compatibility details:** the unextended permanent game has
+14 players. `analyze_labor_cost` / legacy `decompose` select its estimator;
+original upper/local games have 2–4 players. The template's reduced
+organizational term games remain exact regardless of team count. The
+following baseline mechanics also inform the generic graph implementation.
 
 `explainer="exact"` remains the default. Use `shap.ExactExplainer` with one zero
 background and explain the one vector, allowing 2**d evaluations. Require all
-binary coalitions to be evaluated. The explicit 15-driver guard is a PoC resource
-safeguard, not a SHAP hard limit. Above it, fail with an instruction to select
-permutation mode; never switch silently.
+binary coalitions to be evaluated. The explicit 15-driver guard is a
+retained resource safeguard, not a SHAP hard limit. Over-limit leaves must
+request permutation explicitly; over-limit parents require simplification.
+Never switch silently.
 
 `explainer="permutation"` uses `shap.PermutationExplainer` with the same background
 and business switches. The default `n_permutations=256` means 256 complete
@@ -550,11 +748,12 @@ forward/reverse cycles. Set `max_evals=n_permutations*(2*d+1)` for pinned SHAP
 0.48.0. There is no exact-mode driver cap in this path. Sampling budgets must be
 positive integers; `random_seed=0` defaults to a nonnegative integer. Reject
 booleans and invalid settings, even when sampling settings are unused in exact
-mode. Derive per-team seeds from SHA-256 of the configured seed and team name,
-independently of iteration order, and restore NumPy's caller RNG state.
+mode. The compatibility/permanent-template seed uses SHA-256 of the configured
+seed and team name. Other graph games include game identity as well. Seeds
+are independent of iteration order; restore NumPy's caller RNG state.
 
-Permutation games return vector-valued permanent cell costs. Sum each driver's
-cell impacts to obtain its permanent-unit impact. Use the same sampled cell
+For the template, permutation games return vector-valued permanent cell
+costs. Sum each driver's cell impacts to obtain its permanent-unit impact. Use the same sampled cell
 values for salary/time/membership audits, without a separate exact recalculation
 or post-hoc rescaling. Every evaluated state must pass the same distribution,
 alignment and finite-cost checks as exact mode. Antithetic sampling preserves
@@ -567,12 +766,14 @@ Approximate extrema cover evaluated states only. The `exhaustive` flag describes
 the strategy: even visiting every coalition with unequal sampling weights does
 not turn a permutation estimate into exact enumeration.
 
-Keep the eight salary-scenario matrices local to their synchronous game/audit.
+For the unextended template, keep the eight salary-scenario matrices local
+to their synchronous game/audit. Other graphs have expression-dependent
+cache sizes; eight is not an engine-wide limit or promise.
 Both explainers reuse the shared costing contribution. Cost/state interfaces
 remain independent of estimation settings. The empirical accuracy assessment is
 an external artifact, not an additional notebook analysis or validation gate.
 
-For organizational cost, exploit exact Shapley additivity:
+For the built-in organizational formula, exploit exact Shapley additivity:
 
 $$
 C=\sum_tNq_tu_t.
@@ -591,6 +792,17 @@ unit drivers in an alternative five-player local game.
 ---
 
 # 15. Interaction-consistent propagation
+
+**General requirement:** recursively propagate child impacts through exact
+auxiliary games that replace the child's scalar cost by 0 and 1, preserving
+all other A/B endpoints. Affine-child validation makes the resulting
+multiplier meaningful. Check parent replacement and flattened efficiency,
+including zero-change parents with offsetting children.
+
+**Built-in template:** M/K/L below are its specific multipliers, not fixed
+names or formulas for all v2 hierarchies. The independent analytical checks
+remain required for this template; their absence in graph execution is
+tracked as [GAP-003](../production/docs/architecture-gaps.md#gap-003-validation-evidence).
 
 For each team, obtain M by running its organizational term game with unit economics
 endpoints replaced by 0 and 1. Obtain K from its team-unit game with permanent cost 0→1.
@@ -616,6 +828,38 @@ are used to measure sensitivity, not to impute unknown employee salary cells.
 ---
 
 # 16. Sparse support and automatic missing-economics completion
+
+## General graph completion and reference contract
+
+Each sparse factor declares its ordered `fallbacks`. These drop cell or
+conditioning dimensions but stay in the same team, population and period.
+`fallbacks=((),)` permits population-level support; `fallbacks=()` permits
+no fallback. The built-in order below is a template default, not an
+engine-wide restriction. Never fabricate missing applicable values.
+
+Aligned inputs match employee/employment-type identities across the full
+organization within the declared population. A missing observation carries
+that person's observed endpoint value without creating membership or
+exposure. Complete missing-population/team copying may override these
+aligned changes by assumption. `carry_observed` is the default economic
+completion policy; `require_reference` rejects unsupported one-sided
+absence. Explicit references replace missing economics only.
+
+Graph `AnalysisRequest.references` uses `(period, team)` keys and either
+population-ID-to-complete-factor mappings or a `team_state` mapping for an
+absent team. Factors must have compatible named axes, aligned identities,
+constraints and amount bases. `Tensor` / `Profiles` values currently come
+from `labor_cost.graph_cost`; this is not the legacy scalar reimbursement
+or `_employees` reference schema. See the
+[authoring reference](../production/docs/model-authoring.md#missing-support-and-explicit-references).
+Do not transfer reference dictionaries between APIs without rebuilding
+against the relevant model/state schema.
+
+## Built-in template defaults and legacy reference schema
+
+The following fallback/default rules preserve the original template.
+The concrete dictionary representation shown below applies to the legacy
+API; graph execution implements its own typed representation.
 
 Distinguish empty populations from missing payment values for actual employees.
 Presence is determined from employee records/exposure, never from payment sign or
@@ -707,33 +951,51 @@ source period, method, affected economics and interpretation. Distinguish inacti
 explicit-reference and carried-observation cases. Copy actual economics only; do
 not manufacture employees or copy exposure into an absent period.
 
-Detailed value diagnostics contain `period`, `team`, `region`, `grade`, `variable`,
+Legacy detailed value diagnostics contain `period`, `team`, `region`, `grade`, `variable`,
 `fallback_level`, `fallback_value`, `source_period` and, for employee vectors,
 `employee_id`. Profile provenance rows store normalization mass 1, not a salary
 or worker count; `membership_profiles` exposes weights and conversion
 factors. Preserve all reference/copy
 records, including later explicit refinements of an automatically copied team;
 cell audits use the final effective value/provenance. Coverage and maximum
-unsupported counterfactual exposure remain available. Support shares are not
-uncertainty intervals.
+unsupported counterfactual exposure remain available in the legacy engine.
+Equivalent graph support diagnostics remain required but are incomplete;
+see [GAP-002](../production/docs/architecture-gaps.md#gap-002-diagnostic-completeness).
+Support shares are not uncertainty intervals.
 
 ---
 
 # 17. Validation and external regression tests
 
-Use rtol=1e-10 and atol=1e-6 for costs without intermediate rounding. Every actual
-analysis performs source/model reconciliation by period/team/contract, game
-efficiency checks, analytical M/K/L checks, parent replacement checks and both
-flattened-view reconciliations. The aggregated driver bridge also reconciles
-to the organizational cost change, and each driver total reconciles to its
+Use rtol=1e-10 and atol=1e-6 for costs without intermediate rounding.
+Required checks include source/row/aggregate reconciliation at meaningful
+population, team and organization boundaries, game efficiency, parent
+replacement and both flattened views. The built-in template also requires
+independent analytical M/K/L checks.
+
+Current graph execution checks organization/team aggregate endpoints,
+row/source totals by team/employment type, game efficiency and parent
+replacement. It does not independently establish every population's
+aggregate-to-row cost: offsetting population errors can pass total checks
+([GAP-001](../production/docs/architecture-gaps.md#gap-001-population-level-aggregate-reconciliation)).
+Its `validation` table also omits some internally executed checks and the
+template's independent analytical M/K/L checks are absent from this path
+([GAP-003](../production/docs/architecture-gaps.md#gap-003-validation-evidence)).
+These are outstanding requirements, not accepted reductions in rigor.
+
+The aggregated driver bridge also reconciles to the organizational cost change, and each driver total reconciles to its
 organizational leaf contributions. Inactive branches have no artificial games.
 Every evaluated counterfactual has valid probabilities, aligned policies and
 finite costs, including when costs are negative. Exact mode additionally checks
 full coalition coverage. Approximate efficiency checks do not measure accuracy.
 
-Keep regression fixtures outside the user-facing notebook. Tests execute tagged
-implementation cells from the notebook, not a duplicated implementation or a
-separate production module. Cover:
+Keep regression fixtures outside user-facing notebooks. Root tests execute
+tagged PoC cells. Production tests separately exercise the extracted legacy
+engine, native graph models, clients and bundles; parity tests use the
+unchanged notebook as an oracle. Compatibility tests do not establish
+coverage of graph implementation paths. See
+[GAP-004](../production/docs/architecture-gaps.md#gap-004-coverage-by-execution-path)
+for the current evidence map. Required analytical cases include:
 
 - signed components, reimbursements, references, unit costs and negative endpoints;
 - positive coefficients/base salary, nonnegative worked time, valid exposure and
@@ -760,10 +1022,12 @@ separate production module. Cover:
 - preservation of external RNG state, invalid options, pinned-version cycle
   counts, scalar/vector sampling agreement, signed costs and zero-change parents.
 
-Run fresh-kernel workflow tests with no configured input and with a small
-production-shaped test DataFrame injected into the input cell. Exercise exact
-and permutation modes, including plots and diagnostics against negative endpoints. Executed fixture outputs remain temporary;
-do not embed example or real payroll results in the delivered notebook.
+Run PoC fresh-kernel workflow tests with no configured input and with a
+small production-shaped test frame, including its plots and diagnostics.
+Test thin production clients separately with catalog/model/dataset inputs.
+Exercise exact and permutation modes and negative endpoints. Executed
+fixture outputs remain temporary; do not embed example or real payroll
+results in the delivered notebook.
 
 Require PEP-8 style checks on notebook code/tests and docstrings on all named
 functions/classes. Show a compact validation/assumption summary in the normal
@@ -772,6 +1036,43 @@ workflow; detailed reconciliation, salary and support tables remain optional.
 ---
 
 # 18. Reporting and salary diagnostics
+
+## Production graph result contract
+
+`AnalysisResult` separates tables, manifest metadata and optional internal
+states. `result.table("bridge")` is the organizational leaf bridge;
+`driver_bridge` aggregates those leaves; `local_bridges/<team>` is a
+separate local bridge. `select_teams` is presentation-only. Consumers must
+not sum parents with leaves or combine local and organizational impacts.
+The engine returns data; it does not build the legacy waterfalls/report.
+
+Both graph declaration versions expose aligned inputs, memberships,
+state-factor values, matching/carry records, exposure allocation,
+fallback records and cell impacts. They do not yet provide the legacy
+coverage, unsupported-support and matched-movement summaries below.
+Generic `diagnostics/cell_impacts` currently contains inner-game rows
+only; `impact_unit` is currency/exposure. Outer games have separate audits
+and do not emit rows in this table. These cell impacts are not propagated
+organizational/local currency amounts.
+
+V1 graph rendering preserves selected legacy bridge/hierarchy/team-summary
+schemas, not all diagnostics. V2 `team_summary` has local endpoints,
+change and exposure; it lacks v1's organizational economics-impact column.
+See the exact [table contract](../production/docs/run-bundles.md) and
+[GAP-002](../production/docs/architecture-gaps.md#gap-002-diagnostic-completeness).
+
+`export_run` writes a JSON manifest and Parquet tables for the selected
+full-organization source snapshot, canonical data and analysis outputs.
+Source and normalized inputs are distinguishable. `load_run` verifies
+checksums/identity and restores tables without recalculation or internal
+states. Dashboard consumers use this contract; dashboard development is
+outside the calculation library.
+
+## Legacy presentation and retained diagnostic requirements
+
+The following reporting helpers, table descriptions and enriched salary
+support diagnostics belong to the legacy engine/notebook. Their required
+graph counterparts remain explicit gaps where not implemented.
 
 Return complete hierarchy and separate flattened organizational/local bridge
 frames. Include dataset, view, team, driver/path, parent, level, units, A/B costs,
@@ -872,7 +1173,9 @@ Use labels consistent with what is actually observed and identified.
 
 # 20. Future optimization
 
-A future planner can construct a workforce state directly and call `cost(state)`. Decision
+A future planner could construct a model-compatible state and call
+`cost(state, model)` through the graph API (`cost(state)` in legacy code).
+There is no general planner or planning-state authoring API yet. Decision
 variables can include workforce size, team shares, and within-team contract, regional and
 conditional-grade distributions. Explicit employee salary/time vectors, cell
 membership profiles, payment and reimbursement assumptions complete the planned
@@ -882,12 +1185,21 @@ Business constraints could impose team staffing minima, service capacity, region
 availability, contract limits, grade/skill coverage, quality/SLA requirements and hiring
 limits. Sharing-pay components do not establish cross-team capacity effects; those would
 need a separate planning model. Historical builders, costing, attribution and any future
-optimizer remain separate. Do not implement optimization in this PoC.
+optimizer remain separate. Do not implement optimization unless requested.
 
 ---
 
 
 # 21. Production schema, signed values and notebook workflow
+
+**Scope: built-in template source contract and preserved legacy adapter.**
+Custom v2 models use their own `SourceSchema`, fields and row formulas at
+the same fixed source grain. The adapter/function names and canonical
+column names below describe the legacy path, not graph public APIs.
+Graph canonical data retains mapped row inputs plus explicit
+`per_exposure__<factor>` columns; employment categories use the mapped
+`employment_type` column and declared populations. Legacy contract type
+labels are not a universal graph schema.
 
 `adapt_production(frame, *, source_cost_column=None, exposure_column=None,
 registry=...)` copies a Pandas DataFrame. Keys are month, employee and employment
@@ -940,8 +1252,10 @@ existing standalone costing and reference behavior.
 | pkc_pay | outsourced reimbursement/source reference |
 
 Required identifiers are nonempty strings, periods are timezone-naive month starts,
-and month/employee/employment-type triples are unique. Keep schema columns
-even if a contract category is absent; inapplicable row values may be null. Applicable monetary values
+and month/employee/employment-type triples are unique. Legacy adapters
+expect their schema columns even if a category is absent; inapplicable
+row values may be null. Graph fields/dimensions are required only where
+applicable to observed rows. Applicable monetary values
 must be finite and nonmissing but **may be negative**. This includes all payment
 components, contract reimbursements, source totals, monetary references and derived
 costs. Never clip, take absolute values or replace negative amounts with zero.
@@ -960,7 +1274,8 @@ For a newly registered payment beyond the known production formula, supply its
 canonical source column and an independent source total including the addition;
 one registry entry handles state construction, costing and attribution.
 
-The notebook has one input/settings cell, no synthetic generator and no automatic
+The preserved PoC notebook has one input/settings cell, no synthetic
+generator and no automatic
 legacy CSV adapter. All calculation functions remain in collapsible notebook
 sections. With no data selected it gives setup guidance; with data it runs the
 analysis directly. Detailed docstrings explain function purpose, inputs, units,

@@ -1,5 +1,13 @@
 # Authoring workforce models
 
+This guide describes native v2 declarations for the production graph API.
+V1 compatibility authoring is more restricted; the dictionary compatibility
+API uses a separate extracted engine. General analytical requirements live
+in the [methodology](../../docs/labor-cost-decomposition.md). Outstanding
+runtime guarantees remain explicit in the [gap register](architecture-gaps.md).
+For a complete first model, use the
+[permanent/temporary walkthrough](../examples/GUIDE.MD).
+
 Every dataset contains employee × employment type × month records.
 `SourceSchema` maps those keys and the team column. Each employee-month
 belongs to exactly one team. Other dimensions and payroll inputs are
@@ -91,6 +99,96 @@ hourly_model(nested=True)       # Parent allowance + nested base earnings
 Each produces a different declared game with the same source grain.
 These choices can change attribution even when endpoint costs agree.
 
+## Mathematical previews
+
+Jupyter is the supported user-facing interface. Install `.[notebook]`
+from `production/` and select that environment's kernel. The
+[authoring notebook](../examples/model_authoring.ipynb) runs without data.
+
+Preview a formula as soon as it exists:
+
+```python
+from labor_cost import Notation, field, render_formula, render_model
+
+pay = field("rate") * field("hours") + field("allowance")
+notation = Notation(fields={"rate": "RT", "hours": "H", "allowance": "ALW"})
+render_formula(pay, notation=notation)
+```
+
+The cell displays $\mathrm{RT}\cdot\mathrm{H}+\mathrm{ALW}$ and a symbol
+legend. Use `display(...)` when the preview is not the last expression in
+the cell. This does not evaluate payroll or require a complete model.
+
+For a complete model, `render_model(model, notation=notation)` shows a
+separate equation for each actual-row component and each aggregate game,
+including organization and local costs. It compiles a `ModelSpec` using
+the existing compiler; an already compiled model is also accepted.
+Compilation does not establish business correctness or reconciliation.
+V1 aggregate equations are labeled as compiler translations.
+
+Pass `model=model` to `render_formula` to resolve dimensions, units,
+conditional distributions and membership bases. A native v2 draft need
+not compile for this expression preview. Unbound references retain
+unspecified metadata; the preview is not a declaration validator.
+Without context, `aligned_mean` appears as a named operator. With context,
+it appears as a sum of membership weights, conversion factors, and the
+**complete paired employee expression**. The index `i` is an aligned
+employee/employment-type record, not an attribution player. For actual
+basis, conversion uses inverse donor-row exposure; for per-exposure basis
+it is one. Each membership collection retains its own weights/conversions.
+
+Child costs stay named by default. To inspect one expanded expression:
+
+```python
+render_formula(
+    model.graph.games[-1].formula,
+    model=model,
+    notation=notation,
+    expand_children=True,
+)
+```
+
+Expansion requires model context. It substitutes the declared child trees,
+without polynomial expansion or independent averaging. Long additions and
+products wrap at operator boundaries. Conditional dimensions and selections
+stay explicit; the local equation evaluates team-axis sums for the selected
+team only.
+Switch mappings show which complete factors change together, separately
+from the mathematical quantities.
+
+### Symbol contract
+
+`Notation` accepts `fields`, `factors`, `games`, `dimensions`, and
+`populations` dictionaries keyed by their respective declaration IDs.
+It is copied on construction and remains separate from the model.
+
+- Defaults use uppercase initials for underscore-separated names, or the
+  first three characters for a single word. These are mnemonic suggestions,
+  not inferred business meanings.
+- Generated collisions receive namespace superscripts (`fld`, `fac`,
+  `cost`, `dim`, `pop`) and, if necessary, deterministic numeric suffixes.
+  Multiletter symbols are upright, so `LC` is one quantity.
+- Overrides can be longer than three letters. They are plain text, escaped
+  for display; raw TeX and control characters are rejected. Explicit symbols
+  must be unique across all five namespaces, with errors naming conflicts.
+- All declarations in supplied model context participate in resolution.
+  Reusing the same model and notation gives consistent symbols in fragments
+  and the equation sheet. Without context, only expression references and
+  configured overrides participate. Adding declarations can introduce new
+  collisions; pin important symbols explicitly.
+- The legend maps symbols to identifiers, source mappings, population,
+  scope, dimensions, units and amount basis where known. `unspecified`
+  means metadata is unavailable or does not apply; it is not an inferred
+  unit or economic assumption.
+
+Preview objects expose `.latex` (without dollar delimiters), `.markdown`
+(equations and legend), `.legend` (a tuple of read-only metadata mappings),
+and `.plain_text`. Jupyter uses Markdown/math through its MIME protocol.
+There is no IPython, plotting or estimator import for rendering.
+
+Notation is neither published nor exported in run bundles and never
+changes a model fingerprint. Keep reusable overrides in notebook settings.
+
 ## Applicability and populations
 
 ```python
@@ -123,10 +221,33 @@ factor's population. Its coordinates are the declared population names.
 Use `select(value("employment_mix"), "kind", "agency")` to weight a
 child cost. Selection occurs after switching the entire vector.
 
+Keep these names distinct:
+
+| Name | Example | Referenced by |
+| --- | --- | --- |
+| Source category value | `temporary` in `employment_type` | Population predicate |
+| Population ID | `agency` | Field/factor/game `population`, `RowCost`, partition `members`, partition `select` |
+| Game ID | `temporary_cost_game` | `child(...)` and `Switch(child=...)` |
+| Field ID | `rate` bound to source `vendor_hourly_rate` | `field(...)` and aligned factor `source` |
+| Factor ID | `rates` | `value(...)` and factor switches |
+
+For example, `Population("agency", {"employment_type": "temporary"})`
+does not create a population named `temporary`. A partition containing
+`agency` must be selected using `agency`, even if its child game is called
+`temporary_cost_game`. A raw category mismatch leaves rows uncovered;
+a stale partition member is invalid; a stale selection category fails
+when that axis is evaluated. Do not solve these mismatches by replacing
+unrelated game IDs or source column names.
+
 Multiple row-cost components may overlap deliberately; their amounts
 add. Every source row must have at least one applicable row formula.
 Observed row totals, aggregate costs and independent source references
-must reconcile. No hidden residual payment is inserted.
+must reconcile. No hidden residual payment is inserted. Current runtime
+checks do not independently establish every population's aggregate cost;
+offsetting branch errors can pass team totals. This required guard remains
+open as [GAP-001](architecture-gaps.md#gap-001-population-level-aggregate-reconciliation).
+Use independent expected cases before publishing; successful compilation
+and recorded validation alone do not prove a chosen model is correct.
 
 ## State primitives and amount bases
 
@@ -155,6 +276,15 @@ Aligned inputs match across the full organization within their declared
 population. Team, grade and region transfers retain identity. A missing
 employee/type observation carries that person's observed value from the
 other period. This does not create workforce records or exposure.
+
+Membership measures changes in participating employee profiles and weights,
+not an additional payroll input. Its effect applies to the whole expression
+inside `aligned_mean`. If that expression includes bonus, membership affects
+bonus as well; the built-in template's base-pay-only label is not universal.
+Aligned rate/hour drivers explain changes to matched inputs under the carry
+assumptions. They do not include every change in population-average rates
+or hours caused by entry/exit. Keep this declared intervention semantics;
+redistribution of membership impacts would require a new methodology.
 
 Fixed policies are not attribution players. The labor template preserves
 its fixed regional-coefficient assumption and applies adjustment once.
@@ -226,7 +356,12 @@ References use `(period, team)` keys. Values map population IDs to
 complete factor dictionaries, or contain `team_state` for an absent
 whole team. Typed reference states can be taken from returned states and
 modified with `Tensor`/`Profiles` from `labor_cost.graph_cost`. They must
-preserve named axes, applicable constraints and complete factor schemas.
+preserve named axes, aligned employee/type identities, applicable constraints
+and complete factor schemas. `Tensor` / `Profiles` are currently imported
+from `labor_cost.graph_cost`, not top-level exports. Do not pass the legacy
+`analyze_labor_cost` reimbursement scalars or `_employees` dictionaries to
+the graph API. A standalone one-period state may have a different employee
+axis from a comparison; matching axes must be established explicitly.
 Explicit references only replace missing economics. Model/run manifests
 encode their values without pickle or executable code.
 
@@ -268,7 +403,10 @@ template. Both compile into the same graph runtime used by new models.
 Legacy `InputSpec`/`WorkforceStructure` authoring keeps its previous
 validation restrictions; use v2 for different populations or nesting.
 Legacy public tables retain their schema through a rendering adapter.
-The original dictionary compatibility entry point remains available.
+The original dictionary compatibility entry point remains available through
+the extracted legacy engine. Its enriched diagnostics are not all emitted
+by the graph runtime. Native v2 and v1 graph `team_summary` schemas differ;
+see the exact [bundle/table contract](run-bundles.md).
 
 V1 catalog entries and run bundles remain readable. New bundles use
 schema 2 and include the compiled declaration graph. Model publication

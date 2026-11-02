@@ -36,16 +36,55 @@ values are in `diagnostics/state_factors`. Source rows remain unchanged.
 | `driver_bridge` | Organizational leaf contributions summed by driver. |
 | `hierarchy` | Parent and leaf rows; do not sum both. |
 | `local_bridges/<team>` | Separate bridge for that team's own cost change. |
-| `team_summary` | Local endpoints and organizational economics contributions. |
-| `validation` | Numerical checks and maximum absolute errors. |
+| `team_summary` | Version-dependent team endpoints; see the schemas below. |
+| `validation` | Recorded numerical checks and maximum absolute errors; currently not a complete ledger of all executed checks. |
 | `assumptions` | Inactive, copied and explicitly referenced economics. |
 | `coalition_audit` | Actual estimators, budgets, counts, seeds and runtime. |
-| `diagnostics/*` | Coverage, fallbacks, cell impacts, matching and profiles. |
+| `diagnostics/*` | State factors, aligned inputs, profiles, matching/carry, exposure, fallbacks and game-local cell impacts. |
 
-Additional aligned inputs appear in `diagnostics/aligned_inputs`. `diagnostics/state_factors` uses named coordinates for arbitrary dimensions.
+The following diagnostic tables are currently emitted by the graph API
+for both declaration schemas: `state_factors`, `aligned_inputs`,
+`membership_profiles`, `employee_alignment`, `exposure_allocation`,
+`fallbacks` and `cell_impacts`, all under the `diagnostics/` prefix.
+`diagnostics/state_factors` uses named coordinates for arbitrary dimensions.
 `diagnostics/membership_profiles` retains sparse indices, weights and
 conversion factors. `diagnostics/cell_impacts` contains actual sampled or
 exact game contributions; no independent diagnostic game is rerun.
+Its columns are `team`, `game`, `switch`, `cell`, `coordinates`,
+`impact_unit`, `method`. Current rows cover inner games only, so
+`impact_unit` is currency per exposure. Outer organizational/local games
+are audited separately; they do not add rows to this table. These cell
+impacts have not been multiplied through parent games and must
+not be added directly to organizational or local currency bridges.
+
+Coverage, unsupported-support, salary-support and matched-movement
+summaries are not yet emitted by the graph runtime. Its generic cell table
+is not equivalent to the enriched legacy salary/time/membership audits.
+These remain requirements in
+[GAP-002](architecture-gaps.md#gap-002-diagnostic-completeness).
+
+## Team summary schemas
+
+The model declaration schema determines the rendering, independently of
+the bundle schema. For a v1 model analyzed through the graph API, columns
+are `team`, `period_a_cost`, `period_b_cost`, `local_change`,
+`organization_economics_impact`, `local_reconciliation_error`.
+
+For a native v2 model, columns are `team`, `period_A_cost`, `period_B_cost`,
+`cost_change`, `exposure_A`, `exposure_B`. V2 does not currently include
+v1's organizational economics-impact or reconciliation-error columns.
+Both expose local team endpoints; do not treat local cost change as the
+team's organizational economics contribution. Choose a documented schema
+using the stored model declaration rather than guessing from bundle version.
+
+The `validation` table currently contains aggregate/row/source and bridge
+checks assembled by the graph API. Attribution executes additional checks
+that are not all recorded there. Population-level aggregate reconciliation
+and independent template M/K/L checks are outstanding
+[GAP-001](architecture-gaps.md#gap-001-population-level-aggregate-reconciliation)
+and [GAP-003](architecture-gaps.md#gap-003-validation-evidence).
+
+## Units and serialization
 
 Currency is the input dataset currency; there is no exchange-rate
 conversion. Shares are signed ratios of the relevant net change and are
@@ -99,6 +138,20 @@ Paths resolve relative to the catalog. Model files are written by
 `publish_model`; datasets are supplied by existing data processes. Loading
 checks fingerprints and refuses changed content under an existing catalog
 revision. There is no implicit latest-version selection.
+
+## Version and reference boundaries
+
+Engine/package version, model declaration schema, analyst model version,
+and bundle schema are separate identities. A schema-two bundle can contain
+a v1 declaration with legacy-rendered tables or a native v2 declaration.
+`labor_cost_model()` defaults to v1; passing `schema_version=2` is explicit.
+
+The manifest's graph references contain typed factor values scoped by
+population or a complete `team_state`. They are not the legacy dictionary
+API's scalar reimbursement / `_employees` reference states. Reference
+values are encoded as metadata; exported analysis states themselves are
+omitted. See the [authoring reference](model-authoring.md#missing-support-and-explicit-references)
+before constructing or replaying references.
 
 Schema-one containers remain loadable without attribution. Native v2
 models use scoped driver IDs and generic diagnostic tables; v1 models

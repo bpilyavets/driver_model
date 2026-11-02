@@ -1,243 +1,190 @@
-# Labor-cost analysis — bring your own DataFrame
+# Labor-cost modeling and attribution
 
-Open [labor_cost_decomposition.ipynb](labor_cost_decomposition.ipynb), load your
-employee-month-employment-type DataFrame, and edit **Your data and settings**:
+The active implementation is an installable Python library in
+[`production/`](production/README.md). Analysts declare payroll formulas,
+workforce factors and attribution games. Business users run published
+models against predefined datasets through the library or thin Jupyter
+notebooks. Calculation and presentation are separate.
+
+The library is progressing toward production readiness. The
+[methodology](docs/labor-cost-decomposition.md) defines analytical
+requirements; the [gap register](production/docs/architecture-gaps.md)
+records outstanding implementation requirements. Passing reconciliation
+alone does not establish correct model interpretation or release readiness.
+
+## Start here
+
+- **Analysts:** [complete permanent/temporary walkthrough](production/examples/GUIDE.MD),
+  then the [model-authoring reference](production/docs/model-authoring.md)
+  and [formula-preview notebook](production/examples/model_authoring.ipynb).
+- **Business clients:** [package quickstart](production/README.md) and the
+  [publish/resolve/analyze example](production/examples/model_lifecycle.py).
+- **Dashboard consumers:** [run bundle and table contract](production/docs/run-bundles.md).
+- **Contributors:** [engineering instructions](AGENTS.MD), methodology and
+  [verification evidence](production/docs/verification.md).
+
+## Install and choose the interpreter
+
+From the repository root, with Python 3.10 or later:
+
+```bash
+python3 -m venv production/.venv
+production/.venv/bin/python -m pip install -e './production[test]'
+```
+
+If the environment lacks `ensurepip`/pip, use installed `uv` instead:
+
+```bash
+uv venv production/.venv
+uv pip install --python production/.venv/bin/python -e './production[test]'
+```
+
+Use one setup route. The test extra includes the dependencies needed for
+repository regression checks; ordinary consumers can install
+`./production` without `[test]`. Install `./production[notebook]` for
+JupyterLab; it is optional for the calculation core.
+
+Run examples with that interpreter:
+
+```bash
+production/.venv/bin/python production/examples/model_lifecycle.py --help
+```
+
+In VS Code select `production/.venv/bin/python`. In Jupyter select a kernel
+from that environment; register one if necessary:
+
+```bash
+production/.venv/bin/python -m ipykernel install --user --name labor-cost-production
+```
+
+An import failure usually means a different Python is running. Check:
+
+```bash
+production/.venv/bin/python -c 'import sys, labor_cost; print(sys.executable); print(labor_cost.__file__)'
+```
+
+## Production workflow
+
+The source grain is employee × employment type × month, with exactly one
+team per employee-month. `SourceSchema` maps the columns; populations,
+applicable payroll fields and categorical dimensions are model-specific.
+The original Russian production column names are required by the
+[built-in template](docs/labor-cost-decomposition.md#21-production-schema-signed-values-and-notebook-workflow),
+not by every custom model.
+
+For supplied `production_df` using that template's columns:
+
+```python
+from labor_cost import (
+    AnalysisRequest, DatasetSnapshot, analyze, build_state,
+    compile_model, cost, labor_cost_model,
+)
+
+model = compile_model(labor_cost_model(schema_version=2))
+dataset = DatasetSnapshot("payroll", "2026-09-close-v1", production_df)
+request = AnalysisRequest(
+    "2026-08", "2026-09",
+    source_cost_column="actual_cost",  # Requires this independent total.
+    explainer="exact",
+)
+result = analyze(model, dataset, request)
+bridge = result.table("driver_bridge")
+
+state = build_state(
+    model, dataset, "2026-08", source_cost_column="actual_cost"
+)
+observed_cost = cost(state, model)
+```
+
+Omit `source_cost_column` to reconstruct the row reference from the model;
+that checks aggregation, not independent payroll completeness. Applicable
+signed payments remain signed. Exposure defaults to `1/k` across a person's
+observed employment types, or uses explicitly selected `(0, 1]` row values
+without renormalization. Salary/time inputs remain paired by employee.
+
+Compilation validates declarations without fitting a model or running
+Shapley. `analyze` builds comparison states and evaluates the declared
+games. `build_state` and `cost` support observed-only costing without SHAP.
+New models use v2 declarations; `labor_cost_model()` still defaults to the
+v1 declaration for compatibility. Both run through the graph API.
+
+Analysis includes all teams in the selected months. Afterwards,
+`result.select_teams(["an existing team"])` selects existing contributions
+and separate local bridges. It does not filter matching inputs or rerun
+attribution. Never combine organizational and local bridge rows.
+
+Analysts validate and publish a model JSON with `publish_model`. A catalog
+is an ordinary filesystem JSON index of explicitly versioned model and
+Parquet dataset entries. It resides wherever the application configures
+it; it is not a registry service. Business clients resolve those entries
+and call `analyze`. The [lifecycle example](production/examples/model_lifecycle.py)
+shows the full process with supplied data.
+
+`export_run` writes a new JSON/Parquet run directory. `load_run` restores
+its tables and metadata without recalculating attribution. The dashboard
+uses that contract, not internal state objects. No dashboard, ingestion,
+API service, scheduler or optimizer is included.
+
+## Execution paths and compatibility
+
+| Entry point | Calculation implementation | Result |
+| --- | --- | --- |
+| `labor_cost.analyze(model, dataset, request)` | Compiled graph runtime; v1 and v2 model declarations | `AnalysisResult`, manifest, named tables, optional in-memory states |
+| `labor_cost.analyze_labor_cost(...)` | Extracted legacy engine | Legacy dictionary and diagnostics |
+| PoC notebook input cell / `Run All` | Notebook implementation | Legacy dictionary and notebook presentation |
+
+Do not interchange modern and legacy state/reference formats. Production
+runtime never loads the notebook. Some compatibility diagnostics have not
+yet been implemented for the graph API; see the gap register and exact
+[table schemas](production/docs/run-bundles.md).
+
+## Verification and operational limits
+
+From the repository root:
+
+```bash
+# Production graph tests plus extracted-engine compatibility regressions.
+production/.venv/bin/python -m pytest -c production/pyproject.toml production/tests
+
+# Preserved notebook regressions.
+production/.venv/bin/python -m pytest -c pytest.ini tests
+```
+
+The notebook-only suite supports `-m 'not kernel'` when local Jupyter socket
+access is unavailable. Production fresh-kernel tests are separate. Oracle
+regressions require the checkout; installed library execution does not.
+
+Exact attribution is the default with a 15-player safeguard. Permutation
+must be requested explicitly; defaults are 256 forward/reverse cycles and
+seed 0. Graph leaf games use the selected estimator; parents and auxiliary
+games remain exact. Reconciliation is not a sampling-accuracy estimate.
+Runs are synchronous. Use separate processes for future concurrent
+permutation execution because the estimator temporarily uses global RNG
+state. No production latency commitment is implied by synthetic timings.
+
+Historical test counts and runtime measurements are recorded in
+[verification evidence](production/docs/verification.md); they do not
+certify the current working tree. Required population-level reconciliation,
+diagnostics and coverage follow-ups are tracked separately.
+
+## Preserved PoC workflow
+
+For the original model/presentation, open
+[`labor_cost_decomposition.ipynb`](labor_cost_decomposition.ipynb), select a
+compatible kernel, load your DataFrame and edit **Your data and settings**:
 
 ```python
 input_df = production_df
-period_a = "2026-01"
-period_b = "2026-02"
+period_a = "2026-08"
+period_b = "2026-09"
 source_cost_column = None
-exposure_column = None  # Or the name of a source exposure column.
+exposure_column = None
 ```
 
-Then **Run All**. The notebook shows the organizational bridge, team summary,
-validation and missing-economics assumptions. Keep `organization_view = "teams"`
-for this default, or choose `"drivers"` for an aggregated driver report. Set
-`selected_team` to a team name for its separate local bridge; enable
-`show_detailed_diagnostics` for salary/fallback audits.
-There is no synthetic data generation or CSV loading. Ingestion is yours to supply.
-Without configured input, the notebook displays setup guidance rather than running
-an example. All implementation functions remain inside collapsible notebook cells.
-
-## Setup
-
-Use Python 3.10 or a compatible environment:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-python -m ipykernel install --user --name labor-cost-poc
-```
-
-Select that environment in your Jupyter-compatible editor. On Debian/Ubuntu,
-creating a virtual environment requires `python3-venv`. JupyterLab is optional;
-install it separately if your editor does not provide a notebook interface.
-
-## Input rules
-
-The complete mapping appears near the top of the notebook and in
-[methodology section 21](docs/labor-cost-decomposition.md#21-production-schema-signed-values-and-notebook-workflow).
-Keep the production names, including `mdm_employee_rk_hash`,
-`lvl7_mapped_management_unit_nm` and `motivation_type` (ТК/ГПД/ПКЦ).
-Temporary and outsourced payroll use `gpd_pay` and `pkc_pay`.
-
-- One row per month, employee and employment type; month-start periods.
-  All employment-type rows for one employee-month must share a team.
-  Duplicate rows of the same employment type are errors.
-- Payment components and payroll totals may be negative. Applicable values must
-  still be numeric, finite and present. Inapplicable values may be null.
-- `base_stavka` and `reg_coef` must be positive. `vyrabotka_percent` is nonnegative:
-  0.8 means 80%, and values above one are allowed.
-- Eligible payment amounts are pre-regional. Salary, sick leave, vacation, holiday,
-  night shift, sharing and quarterly pay receive the coefficient once. KPI,
-  overtime and other bundled pay are unadjusted.
-- Default workforce exposure is split equally across each employee's observed
-  employment types in that month: one type gets 1, two get 0.5 each, three
-  get one third each. Presence depends on records, including zero/signed pay.
-- `vyrabotka_percent` is actual/planned hours. Salary times this fraction
-  already gives earned permanent base pay before regional adjustment.
-  All applicable payments are actual amounts for that employment-type row.
-  Exposure allocation does not reduce those amounts again.
-
-If you have an independent total for each employment-type row, set
-`source_cost_column` to its
-column name. Otherwise permanent payroll is reconstructed and labeled accordingly;
-its reconciliation verifies aggregation, not independent payroll completeness.
-Negative independent totals must still be explained by their components.
-
-## Workforce exposure policy
-
-Equal splitting is an allocation assumption, not measured FTE or worked time.
-For a person earning 50,000 permanently and 30,000 temporarily in the same
-month, the default exposure is 0.5 per row, workforce total 1 and payroll 80,000.
-
-When real exposure is available, set `exposure_column = "your_column"`, or pass
-that keyword to `analyze_labor_cost` / `adapt_production`. Values must be finite
-and in `(0, 1]` per row. They are used directly: employee totals below or above
-one are permitted, and missing/invalid values never fall back to equal shares.
-An unselected exposure column has no effect. The assignment rule is isolated
-in `resolve_exposure`; costing and attribution do not select an exposure policy.
-
-The adapter preserves actual source totals and converts payments/reimbursements
-to currency per exposure. Observed salary and worked fraction remain unchanged.
-Sparse membership profiles carry `base_pay_factors = 1 / exposure`, switched
-with workforce mix, to preserve earned base pay without inventing raises or
-time changes. Existing canonical per-exposure inputs and older aligned profiles
-without factors retain factor-one behavior. Payment/reimbursement impacts can
-reflect changed allocation denominators as well as changed actual payments.
-
-Normal reports show `analysis["exposure_config"]` and period totals distinguishing
-source records, distinct employees and exposure. Category distinct-person counts
-are not additive across employment types; exposure is additive. Detailed
-`diagnostics["exposure_allocation"]` shows row assignments and type counts, and
-`diagnostics["membership_profiles"]` includes the effective base-pay factors.
-
-## Missing contracts and teams
-
-The default `missing_economics = "carry_observed"` does the following:
-
-| Situation | Handling |
-|---|---|
-| Contract category observed in one month | Use that same team's observed rate in both months. |
-| Permanent category observed in one month | Copy its complete permanent state. |
-| Whole team appears or disappears | Copy its unit economics, retaining zero workforce share in the absent month. |
-| Category inactive in both states | Skip its economics; do not invent a rate or permanent profile. |
-
-Copied economics have zero rate-change impact **by assumption**. The notebook
-reports the missing period, donor period and affected economics. Explicit references
-can override missing economics; `"require_reference"` restores strict handling of
-one-sided absence. Neither policy fills missing pay for existing employees.
-Employees permanent in only one month carry their observed salary/time inputs;
-this does not create employment in the missing month. Transfers use the same
-person's history, not the other team's average. Complete-copy category/team
-assumptions still imply zero branch economics change. References must contain
-aligned employee vectors and sparse cell profiles; old salary/time-matrix-only
-states must be rebuilt. Reference formats are documented in [the methodology](docs/labor-cost-decomposition.md#16-sparse-support-and-automatic-missing-economics-completion).
-
-Sparse cells within an observed permanent population still use same-period,
-same-team fallback: cell → grade → region → team permanent population. Coefficient
-bands are not identified geography. Regional-policy changes remain outside scope.
-
-## Reading and reusing results
-
-```python
-analysis["bridge"]          # Organizational leaf impacts.
-analysis["driver_bridge"]   # Organizational impacts summed by driver.
-analysis["local_bridges"]   # Local bridges indexed by team name.
-analysis["team_summary"]    # Team endpoints and the two reporting views.
-analysis["assumptions"]     # Inactive, copied or referenced economics.
-analysis["validation"]      # Detailed pass/error records.
-analysis["diagnostics"]     # Salary/time/membership and matched-ID audits.
-```
-
-Organizational and local bridges allocate scale interactions differently: do not
-add their rows together. Signed payroll explains the recorded month, including
-reversals. Base salary changes and the proportion of planned hours worked are
-switched separately using matched employee inputs. A raise cannot itself
-create a time impact. A third driver, Within-cell workforce mix — base pay, explains changing
-membership; grade and membership effects may offset. Salary changes include
-promotions without establishing their cause. Other payments keep their existing
-per-cell definitions.
-
-For programmatic use after loading the notebook's implementation cells:
-
-```python
-analysis = analyze_labor_cost(
-    production_df,
-    "2026-01",
-    "2026-02",
-    source_cost_column=None,
-)
-report(analysis)
-```
-
-Use `help(analyze_labor_cost)` or other function docstrings for contracts and units.
-
-## Optional organizational driver summary
-
-The team overview remains the default. In the input cell, choose:
-
-```python
-organization_view = "drivers"
-selected_driver = "underlying_salary_level"  # Optional; None skips team detail.
-```
-
-The table and waterfall show one organizational impact per active driver,
-including separate Workforce scale and Team mix rows. Driver identifiers are
-shown in the table for selection. Counts are grouped by period and contract.
-The summary reuses the calculated organizational leaf impacts; workforce states
-remain team-conditional and no additional attribution games are run.
-
-The optional selector shows that economics driver's signed contributions by
-team and their matching aggregate total. It accepts team-associated leaf
-identifiers present in the results. Workforce scale, Team mix, intermediate
-parents and inactive drivers cannot be selected for this breakdown. A driver
-selection requires `organization_view = "drivers"`.
-
-`selected_team` independently adds a **LOCAL** team report. Its impacts use
-local interaction allocations and are not the contributions underlying the
-aggregated organizational driver. Do not combine either bridge with its summary.
-Active drivers with offsetting team impacts remain visible even when their
-aggregate is zero. Shares use the organizational net change and are undefined
-near zero; monetary amounts remain signed and unrounded in the result tables.
-
-After analysis, switch reports without rerunning decomposition:
-
-```python
-report(analysis, organization_view="drivers", driver="underlying_salary_level")
-report(analysis)  # Original team overview.
-report(analysis, team="Alpha")  # Separate local bridge; choose an actual team.
-```
-
-## Choose the permanent-driver explainer
-
-The input cell and API accept:
-
-```python
-explainer = "exact"       # Default; or "permutation" for sampling.
-n_permutations = 256      # Forward/reverse cycles; permutation mode only.
-random_seed = 0           # Nonnegative integer for reproducibility.
-```
-
-Pass the same keywords to `analyze_labor_cost(...)` or `decompose(...)`.
-Small organizational/team games and propagation multipliers always remain exact.
-The selected method applies to permanent games, which can grow with your registry.
-
-Exact mode enumerates 16,384 coalitions for the standard 14 drivers. Its 15-driver
-limit is a PoC safeguard, not a SHAP hard limit; above it, choose permutation mode
-explicitly. There is no silent method change. Permutation mode supports 20 or more
-drivers and uses a budget of `n_permutations * (2*d + 1)` per team. Sampling
-settings are validated in both modes but used only in permutation mode.
-
-Results show the requested configuration and the actual method, budget, seed,
-evaluation counts and runtime per game. A stable team-derived seed makes runs
-reproducible regardless of team iteration order, without changing NumPy's caller
-random state. Sampled cell diagnostics use the same allocation as the bridge.
-Numerical reconciliation does **not** establish individual-impact accuracy;
-sampled extrema describe evaluated states only.
-
-The separate [accuracy assessment](docs/explainer-accuracy.md) contains measured
-tradeoffs, assumptions and reproduction instructions. No benchmark or accuracy
-estimate runs in the notebook. `cost(state)` stays independent of comparison and
-SHAP, with economics required for positive-share categories. No optimizer or
-ingestion infrastructure is included.
-
-## Development checks
-
-```bash
-python -m pip install -r requirements-dev.txt
-python -m pytest
-```
-
-Tests load the notebook's tagged implementation cells as the single source of
-production logic. Small test fixtures, signed/counterfactual cases and a new-driver
-extension live in `tests/`; they do not run in the user workflow. The suite checks
-PEP-8 style and function/class docstrings as well as analytical reconciliation.
-
-Fresh-kernel tests require local Jupyter socket access. To run only non-kernel
-checks in a restricted environment, use `python -m pytest -m "not kernel"`.
-Kernel tests execute a temporary copy both unconfigured and with a test DataFrame;
-the delivered notebook remains free of stored payroll outputs. Cost tolerances
-are `rtol=1e-10`, `atol=1e-6`, without intermediate rounding.
+Then run all cells. Unconfigured execution displays setup guidance. Its
+`report`, plotting options and dictionary diagnostics are notebook/legacy
+interfaces, not the graph API. Keep the oracle notebook free of stored
+payroll outputs. The original `requirements.txt` / `requirements-dev.txt`
+remain the PoC dependency files; production dependencies live in the
+package configuration. See methodology sections 11, 18 and 21 for the
+legacy contracts.

@@ -1,252 +1,213 @@
-# Repository purpose
+# Repository purpose and execution paths
 
-This repository contains analytical tooling for:
+The active implementation is the installable library in `production/`.
+It explains labor-cost changes and is progressing toward production
+readiness. Standalone costing also leaves room for future planning; do
+not implement an optimizer, ingestion service, API server, scheduler or
+new dashboard unless requested.
 
-1. explaining changes in labor costs through driver decomposition; and
-2. eventually supporting workforce planning / optimization.
+Read [the methodology](docs/labor-cost-decomposition.md) before changing
+payroll, workforce states, counterfactuals or attribution. Its general
+requirements apply to every model; its explicitly scoped template rules
+apply to the built-in labor-cost model. Read the
+[implementation-gap register](production/docs/architecture-gaps.md) before
+claiming a requirement is fully implemented. Missing requirements remain
+requirements until explicitly revised; do not remove them to match code.
 
-The current implementation is a proof of concept. Prefer analytical correctness, transparency, and ease of iteration over production-grade abstractions.
+Keep these execution paths distinct:
 
-For the labor-cost decomposition methodology and business semantics, read:
+| Path | Role |
+| --- | --- |
+| `labor_cost.analyze(model, dataset, request)` | Production graph runtime for compiled v1 and v2 declarations; returns `AnalysisResult`. |
+| `labor_cost.analyze_labor_cost(...)` | Extracted legacy engine; dictionary compatibility contract. |
+| `labor_cost_decomposition.ipynb` | Preserved PoC implementation and read-only regression oracle. |
 
-`docs/labor-cost-decomposition.md`
+Production execution must never load or execute the PoC notebook. Keep
+its implementation, test fixtures and outputs unchanged unless the user
+explicitly requests a notebook change. Do not route new graph features
+through the compatibility engine or move package logic into a frontend.
 
-before modifying decomposition, workforce-state, counterfactual, or cost-model logic.
+# Package boundaries
 
-# Core architecture
-
-Keep these concerns separated:
-
-```text
-raw Pandas DataFrame
-        ↓
-workforce state builder
-        ↓
-cost engine
-        ↓
-attribution / Shapley engine
-```
-
-The cost engine must not depend on SHAP.
-
-It should be possible to evaluate:
-
-```python
-cost(workforce_state)
-```
-
-independently of any historical decomposition.
-
-This is important because the same cost engine may later be reused for plan-oriented optimization.
-
-# Analytical principles
-
-* The cost engine is the source of truth.
-* Attribution explains changes in the cost engine; attribution logic must not redefine payroll logic.
-* Every reported decomposition must reconcile to the corresponding modeled cost difference within numerical tolerance.
-* SHAP features represent business drivers / interventions, not arbitrary DataFrame columns.
-* Structurally inseparable variables must be switched together.
-* Vector-valued or matrix-valued distributions must be switched as complete drivers when their elements are constrained to sum to one.
-* Counterfactual states must have coherent business semantics.
-* Do not manufacture economically named variables that are not identifiable from the available data.
-* Unknown or residual concepts must be labeled conservatively and transparently.
-* Never silently fill unsupported counterfactual cells with zero.
-* Make modeling assumptions and fallback logic visible.
-
-# Engineering principles
-
-This is currently a PoC.
-
-Prefer:
-
-* clear functions;
-* simple dataclasses/configuration where useful;
-* analyst-readable Python;
-* a well-structured Jupyter notebook if that is the simplest deliverable;
-* explicit validation;
-* declarative driver configuration.
-
-Avoid unless clearly necessary:
-
-* complex class hierarchies;
-* dependency-injection frameworks;
-* generic workflow engines;
-* APIs/web services;
-* persistence abstractions;
-* distributed computation;
-* elaborate caching;
-* premature packaging.
-
-# Driver extensibility
-
-Adding, removing, or renaming a business driver must be low-friction.
-
-Driver definitions should be centralized in one registry/configuration mechanism wherever practical.
-
-Adding a driver should not require unrelated edits across the cost engine, SHAP wrapper, reporting, validation, plotting, and labels.
-
-Whenever changing driver architecture, verify this property explicitly.
-
-# Data assumptions
-
-Input data may be assumed to be available as Pandas DataFrames.
-
-The source data are stored at **employee-month-employment-type level**, but the decomposition model is **not employee-level**. Employee records are inputs used to construct aggregated period-level workforce states such as workforce exposure, contract mix, regional mix, grade composition within region, and employee-aligned salary/time inputs with sparse within-cell membership profiles.
-
-Do not run SHAP directly over employees or interpret the sum of employee-level attributions as workforce-composition effects unless explicitly requested.
-
-Data acquisition from source systems is outside the scope of this repository unless explicitly requested.
-
-# Validation requirements
-
-At minimum validate:
-
-1. modeled period-A cost against the corresponding source cost;
-2. modeled period-B cost against the corresponding source cost;
-3. top-level attribution reconciliation;
-4. permanent-cost attribution reconciliation;
-5. flattened hierarchical reconciliation;
-6. validity of probability distributions;
-7. absence of unexpected NaNs / unsupported states;
-8. explicit reporting of fallback usage.
-
-Invalid model states should fail loudly rather than silently producing plausible-looking attribution.
-
-# Future planning support
-
-When reasonable without complicating the PoC, design workforce states and cost functions so that future code can use:
+Maintain this separation:
 
 ```text
-decision variables
-        ↓
-workforce state
-        ↓
-cost(state)
+ModelSpec -> compiler -> CompiledModel
+                              |
+DatasetSnapshot + AnalysisRequest
+             -> input adaptation and exposure assignment
+             -> observed/comparison state construction and completion
+             -> pure cost evaluation
+             -> attribution and recursive propagation
+             -> result tables and manifest
+             -> optional run export / frontend presentation
 ```
 
-for constrained optimization.
+`build_state(model, dataset, period)` builds an observed-only state.
+`cost(state, model)` must work without SHAP, comparison history or input
+acquisition. Custom states need their matching model. Historical economic
+completion belongs in the comparison builder, never in cost evaluation.
 
-Do not implement an optimizer unless explicitly requested.
+Keep plotting and Jupyter dependencies outside calculation
+code. Catalogs are filesystem JSON indexes; runs are JSON/Parquet bundles.
+The dashboard consumes tables and metadata without internal Python states
+or recalculating attribution. Maintain synchronous in-process execution.
+Permutation currently uses NumPy's global RNG temporarily; future
+concurrent runs must use process isolation, not threads.
 
-# Team-aware payroll and attribution requirements
+# General analytical requirements
 
-* Keep all production calculation functions inside the notebook. Its normal flow
-  must be a DataFrame input/settings cell, analysis call, results and optional
-  diagnostics. Hide implementation cells where the viewer supports it. Do not
-  add a separate production module, synthetic generator, automatic CSV loading
-  or demonstration outputs to this user workflow.
-* Keys are month/employee/employment type. All rows for an employee-month
-  have exactly one team. Sharing bonuses belong to that team. Employee IDs
-  align salary/time observations, including transfers, but are never
-  Shapley players.
-* Preserve the organizational N * sum(team_share * team_unit_cost) hierarchy,
-  nested team-unit and permanent games, and separate local team bridges. Never
-  combine organizational and local impacts. Switch complete probability vectors
-  and conditional-grade matrices atomically.
-* Missing contract economics default to the same team's observed opposite-period
-  rate; missing permanent economics copy the full permanent state. An absent
-  whole team copies observed unit economics, never observed workforce exposure.
-  Record every assumption and donor period. Explicit references override missing
-  economics only. Retain require_reference as an optional strict policy.
-* Categories with zero share in both completed endpoints are inactive. Do not
-  demand rates, salary policies or permanent matrices/games for these categories.
-  Unknown economics are None, not zero rates. Cost may skip a zero-share unknown;
-  a positive-share unknown must fail. Keep completion outside cost(state).
-* Sparse cells within an observed permanent population still use only that team
-  and period: cell → grade → region → team permanent population. Do not pool other
-  teams or borrow another period to fill individual sparse cells automatically.
-* Accept signed finite monetary components, reimbursements, references, source
-  costs, unit costs and totals. Never clip legitimate negative values. Missing
-  applicable amounts remain errors, not an absent-population fallback case.
-* Base salary and regional coefficients stay strictly positive. Worked time
-  stays nonnegative (values above one allowed); exposure and probability bounds
-  remain unchanged. Default exposure is 1/k across the person's k observed
-  employment types in that month. An explicit exposure_column bypasses this
-  policy with validated (0, 1] row values; never renormalize supplied totals.
-  Keep assignment in one helper, outside costing and attribution.
-* Production payroll contains actual amounts per employment-type row. Preserve
-  source totals before normalization. Divide registered supplemental payments
-  and reimbursements by exposure. Keep observed salary/time unchanged; use
-  base_pay_factor=1/exposure in permanent membership profiles instead.
-* Profile base_pay_factors switch with the complete membership collection.
-  Validate them as positive finite aligned arrays, separately from normalized
-  weights. Canonical per-exposure inputs and older aligned profiles/references
-  default missing factors to one. Do not add a Shapley player. Descriptive
-  salary/time means never apply these factors.
-* Report exposure policy, source-row counts, distinct people and exposure
-  separately. Deduplicate employee-month/team membership for movements.
-  Expose allocation and factors in diagnostics. Supplemental payment impacts
-  describe per-exposure economics, including allocation-driven changes.
-* Follow the production mappings and formula in the methodology. Apply regional
-  adjustment once to salary, sick/vacation/holiday/night pay and sharing/quarterly
-  bonuses. KPI, overtime and other bundled pay are unadjusted. Signed normalization
-  precedes aggregation/fallback and preserves actual source_cost.
-* Fixed coefficient policy remains an assumption. Reject inconsistent A/B policy
-  schedules; coefficient bands alone cannot distinguish geography or policy moves.
-* Propagate with auxiliary M, K and L multipliers, preserving analytical checks
-  and parent reconciliation. Never divide by parent change. Skip inactive games.
-  Keep small upper games and multipliers exact. Permanent games explicitly select
-  exact or permutation; exact remains the default with its 15-driver safeguard.
-  Never switch silently. Permutation mode must support larger registered sets.
-* Use employee-aligned salary and actual/planned-hours vectors. Never reconstruct
-  time as a salary-weighted ratio or multiply independent salary/time means.
-  Register the complete normalized within-cell membership profiles as one extra
-  base-pay driver. Keep sparse integer-index/weight arrays, not a dense tensor.
-* Label the drivers Base salary changes, Proportion of planned hours worked and
-  Within-cell workforce mix — base pay. Salary changes include promotions without
-  identifying their cause. Supplemental payment matrices retain their existing
-  interpretation; the new membership player affects base pay only.
-* Match each employee's permanent inputs across the organization, including team,
-  region and grade transfers. Missing permanent observations carry that person's
-  observed salary/time, never workers or exposure. Record matching/carry provenance.
-  Same-person transfer history is allowed; pooled cross-team fallback is not.
-* Keep standalone costing independent of comparison. Complete-copy rules for an
-  absent category/team still override branch economics changes by assumption.
-  References need the revised aligned profile/vector schema; reject legacy
-  aggregate-only references rather than invent pairing.
-* Reuse the shared salary formula for eight cached comparison scenarios and the
-  salary/time/membership cell audits. Caches stay local to a synchronous game;
-  never retain them in returned states. Verify cached/direct equality.
-* Use shap.PermutationExplainer with one zero background and a one-vector input.
-  One forward/reverse cycle costs a budget of 2*d+1 in pinned SHAP. Default to
-  256 cycles and seed 0; validate settings, derive stable per-team seeds and
-  preserve the caller's NumPy RNG state. Reconciliation is not sampling accuracy.
-* Approximate permanent games explain cell-cost vectors; summed cell impacts are
-  the driver impacts. Approximate cell audits reuse those same samples. Never
-  compare sampled impacts with independently exact diagnostics or rescale them.
-  Keep exact-mode audits and exact_game compatibility intact.
-* Report actual methods, evaluation budgets/counts, seeds and runtime. Validate
-  every evaluated counterfactual; require exhaustive coverage only in exact mode.
-  Sampled extrema are extrema of evaluated states, not all possible states.
-* Keep empirical accuracy benchmarks and results outside the notebook. External
-  experiments may exploit validated component additivity for a 20-driver exact
-  reference; do not introduce that shortcut as another production mode. Time the
-  real validated engine separately from any benchmark-only lookup acceleration.
-* Preserve cell-impact/provenance audits, support shares and matched-ID diagnostics
-  with salary and worked-fraction changes. Pass comparison periods explicitly;
-  never hard-code January/February in functions.
-* Label reconstructed references separately from independent source costs. Adding
-  a driver must stay localized to source payroll and one registration. Verify
-  this in external tests instead of running a demo in the user notebook.
+- Source grain is employee × employment type × month. Require unique
+  keys, month-start periods and one team per employee-month. Source
+  column names, employment categories and applicable fields are declared
+  by the model. Preserve caller DataFrames and actual source amounts.
+- Select comparison periods across the full organization before employee
+  alignment. Team selection is a view of existing results, never an input
+  filter or a new matching population.
+- The cost engine defines payroll. Attribution explains it and must not
+  introduce different arithmetic. Employees are alignment identities,
+  not individual Shapley players.
+- Preserve joint employee inputs in products. Never replace a paired
+  mean with a product of independent means or manufacture economic
+  concepts that cannot be identified from the source data.
+- Switch complete probability vectors, conditional tables and membership
+  collections atomically. Group structurally coupled factors explicitly.
+  Membership includes its positive exposure-conversion factors.
+- Accept finite signed monetary amounts, references and costs where the
+  model declares signed fields. Never clip corrections or reversals.
+  Enforce each declared field's positivity/nonnegativity and units on
+  applicable rows. Missing applicable inputs are errors, not absence.
+- Default exposure is `1/k` across observed employment types per
+  employee-month. Explicit exposure must be in `(0, 1]`; never renormalize
+  supplied totals or interpret exposure as hours/FTE without evidence.
+- Actual payment factors divide by exposure; actual-basis membership
+  supplies `1/exposure` conversion while aligned inputs stay observed.
+  Explicit per-exposure factors use their declared basis. Keep raw source,
+  canonical row inputs and aggregated state factors distinguishable.
+- Missing economics remain unknown, not zero rates. A zero-share unknown
+  may be skipped; positive-share unknown economics must fail. Inactive
+  branches need no fabricated inputs or games.
+- Sparse fallback uses declared support within the same team, population
+  and period. Cross-period same-person matching is distinct from fallback.
+  Carry missing aligned observations from that person's observed endpoint,
+  recording the assumption; never manufacture workers or exposure.
+- Complete missing population/team economics according to the selected
+  policy. Explicit references affect missing economics only; preserve
+  observed economics. `require_reference` must reject unsupported one-sided
+  absence. Whole-team copying retains zero exposure at the absent endpoint.
+- Organizational and local bridges are distinct allocations. Never combine
+  them or sum hierarchy parents with their children. Driver summaries
+  aggregate organizational leaves without new attribution games.
+- Nested costs must satisfy the compiler's affine-child restrictions;
+  organization costs remain additive by team. Propagate with exact
+  auxiliary zero-to-one games, never division by a parent's cost change.
+  Preserve offsetting children when the parent change is zero.
+- Exact is the default, with the 15-player exact-game guard. Leaves may
+  explicitly use permutation: 256 cycles and seed 0 by default. Parents
+  and auxiliary games stay exact; never change estimators silently.
+- Validate every evaluated counterfactual. Exact mode requires exhaustive
+  coalitions; sampled cell audits reuse the actual sampled contributions.
+  Report methods, budgets/counts, effective seeds, runtime and sampled
+  versus exhaustive extrema. Reconciliation is not sampling accuracy.
+- Reconcile source, row and aggregate costs at meaningful population/team/
+  organization boundaries and every hierarchy boundary, using
+  `rtol=1e-10`, `atol=1e-6`, without intermediate rounding. Preserve the
+  outstanding population-reconciliation and audit-evidence requirements
+  recorded in the gap register; current total-level checks are insufficient.
+- Keep assumptions, fallback support, matching/carry provenance and
+  effective reference values visible. Coverage/support shares are not
+  uncertainty intervals. Do not describe missing graph diagnostics as
+  already available because the legacy engine provides them.
 
-# Readability and verification
+# Model authoring and interpretation
 
-* Document every named function/class with a meaningful docstring. Substantial
-  public functions need parameters, returned values/units, failure conditions and
-  analytical assumptions; concise helpers need clear summaries. Use NumPy-style
-  sections where appropriate and follow PEP 257 conventions.
-* Comply with PEP 8: descriptive snake_case, four spaces, grouped imports, normal
-  whitespace and 79-character code lines. Avoid packed semicolon statements and
-  excessively dense expressions. Wrap prose at 72 characters where practical.
-* External tests must load tagged notebook implementation cells without copying
-  production logic. Keep small test fixtures and extension checks outside the
-  user-facing notebook. Run automated style/docstring checks and meaningful
-  analytical, signed-payment, missing-economics and counterfactual tests,
-  including zero time impact for salary-only changes and zero salary impact
-  for time-only changes.
-* Test fresh-kernel execution both unconfigured and with a production-schema test
-  DataFrame injected into the designated input cell. Keep executed test outputs
-  temporary; deliver a notebook without stored payroll data/results.
-* Use rtol=1e-10 and atol=1e-6 without intermediate rounding. Validate source/team/
-  contract costs, all active games, probabilities, multipliers, both bridges and
-  explicit assumptions. Preserve no-input guidance and caller DataFrame integrity.
+Jupyter notebooks are the supported user-facing interface. Mathematical
+previews live in the presentation module and derive from expression trees;
+notation settings do not change model declarations or fingerprints.
+Keep the authoring and analysis notebooks thin, with no stored outputs.
+
+V2 declarations separate `SourceSchema`/`Population`/`FieldSpec`/`RowCost`,
+state `Factor`s, aggregate expressions, and `Switch`/`Game` definitions.
+Compilation checks supported declarations; analysis constructs states and
+runs games. There is no training or fitting stage.
+
+Keep driver extensions localized to model declarations and source payroll
+where existing primitives suffice. Verify extensions without unrelated
+reporting edits. New mathematical primitives require engine work and
+explicit semantic tests; arbitrary callbacks are not a v2 escape hatch.
+
+Support the documented arithmetic, named-axis aggregation, whole
+conditional distributions, population scopes and aligned products.
+Reject unsupported units, ownership or hierarchy combinations with
+contextual errors. Distinguish source category values, population IDs,
+factor IDs, game IDs and presentation labels in examples.
+
+Membership measures changes in participating employee profiles and their
+weights/conversions. Its scope is the expression inside `aligned_mean`;
+it can include bonuses or temporary payroll. Aligned-input drivers measure
+changes in matched inputs under the carry assumptions, not every change
+in a workforce average. Do not redistribute membership impacts or change
+these definitions without an explicit methodology decision.
+
+# Built-in labor-cost template requirements
+
+Preserve the original template semantics in methodology sections 5–10,
+14–16 and 21, even though custom v2 models may use different declarations:
+
+- Three employment categories, the documented actual-row payroll formula,
+  region-first grade composition and the organization/team hierarchy.
+- Positive base salary and regional coefficients; nonnegative worked
+  fraction, including values above one. Apply regional adjustment once
+  only to eligible components. Coefficient bands do not identify geography.
+- Separate salary, worked-fraction and within-cell base-pay membership
+  drivers with their existing IDs/labels. Membership affects base pay
+  only in this template; supplemental payments keep their cell definitions.
+- Same-team/period cell → grade → region → permanent-population fallback;
+  complete-copy missing-category/team assumptions and explicit references.
+- Fixed regional policy; salary changes include promotions without
+  identifying their cause. No inferred grade coefficient or compa-ratio.
+- Fourteen permanent players and eight salary/time/membership cache
+  scenarios for the unextended template. Caches stay local to a game,
+  never in returned states. Verify cached/direct costing equality.
+- Independent M/K/L analytical checks and support/matched diagnostics remain
+  requirements. Their graph-runtime gaps are explicit, not waived.
+
+Keep v1 declaration fingerprints and compatibility behavior stable unless
+an intentional migration is requested. Model version, declaration schema,
+engine version and bundle schema are separate identities. Preserve
+schema-one bundle readability and record actual settings/provenance.
+
+# Verification and documentation
+
+From the repository root, using the production environment with test
+extras installed:
+
+```bash
+production/.venv/bin/python -m pytest -c production/pyproject.toml production/tests
+production/.venv/bin/python -m pytest -c pytest.ini tests
+```
+
+The first suite contains graph-specific tests and regressions against the
+extracted legacy engine; the second tests the notebook. Notebook parity
+compares against tagged cells read-only. These paths are not interchangeable
+coverage. Fresh-kernel tests require local socket access; the root suite's
+`-m 'not kernel'` option excludes its kernel tests, not production tests.
+
+For changed calculations, run relevant exact/permutation parity,
+independence, signed-input, transfer, exposure, missing-economics,
+extension and bundle tests. Test supported new graphs directly, not only
+through the compatibility fixture. Verify notebook-free installed costing
+and analysis when deployment interfaces change. Record failures and
+coverage limitations accurately; do not infer a green current release from
+historical test counts or benchmarks.
+
+Document named definitions with meaningful docstrings, using NumPy-style
+contracts for substantial public functions. Follow PEP 8, 79-character code
+lines and readable prose. From `production/`, run the applicable Ruff and
+pycodestyle checks on `src`, `tests` and maintained `examples`. Do not alter
+user experiments merely to make an unrelated documentation check pass.
+
+Update methodology, public contracts and affected examples alongside
+behavior changes. Preserve published links where practical. Benchmark
+real validated workloads separately from accuracy experiments; make no
+latency or production-readiness claims without corresponding evidence.

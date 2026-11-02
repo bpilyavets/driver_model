@@ -1,4 +1,55 @@
-# Production graph verification
+# Production graph verification evidence
+
+## Jupyter formula previews — 2026-11-01
+
+The formula-preview change adds tree-based mathematical rendering,
+notebook-local notation, a data-free authoring notebook, and a published
+model preview in the analysis client. The Streamlit example, dependency
+extra and dedicated test are retired. Historical Streamlit results below
+describe the earlier implementation and are retained as historical evidence.
+
+The complete production suite was run with:
+
+```bash
+production/.venv/bin/python -m pytest -c production/pyproject.toml production/tests -q
+```
+
+Result: **203 passed, 1 failed** in 361.94 seconds. The sole failure was
+`test_quality.py::test_style_and_docstrings`, caused by pre-existing
+`examples/poc_extented_model_test.py` formatting: line 194 exceeds 79
+characters and line 418 has no final newline. Broad Ruff also flags that
+experiment's unused NumPy import. The analyst experiment was left intact.
+
+After final layout refinements, the focused presentation tests and authoring
+fresh-kernel test passed together: **21 passed, 5 deselected**. The full
+run also passed all analysis-client kernel cases: unconfigured, model-only
+preview, exact analysis and permutation analysis. The maintained source,
+tests and examples pass Ruff and pycodestyle when excluding the existing
+experiment; patch whitespace checks pass.
+
+The tests cover both declaration versions, model identity preservation,
+optional-dependency-free rendering, complete and draft models, conditional
+axes, paired inputs, multiple memberships and amount bases, selections,
+child expansion, symbol collisions, escaping and long-formula wrapping.
+They do not close any analytical gaps in the register.
+
+Temporary executed notebooks were inspected in JupyterLab using Chromium.
+The final isolated workspace displayed 12 math blocks, including the native
+template, a 25-term formula and escaped-label cases, with no MathJax errors
+or equations overflowing the available notebook width at a 1440-pixel
+viewport. Long products and additions wrap without distributing terms.
+
+Repository notebooks remain unexecuted with empty outputs. The original
+PoC notebook remains unchanged, with SHA-256
+`03ca24c1e13bbca01587d1c95fe040ebf4a1021f5c9f9e3940fda712d94aea81`.
+
+## Historical implementation verification
+
+The counts, timings and installation checks in this section record the
+original v0.2.0 implementation session. They have not been rerun as a full
+release gate for every subsequent working-tree change. In particular,
+compatibility-engine tests do not imply complete graph-path coverage;
+consult the [gap register](architecture-gaps.md).
 
 The v2 implementation preserves employee × employment type × month source
 data and exposes scoped row formulas, aggregate expressions, distributions,
@@ -6,7 +57,10 @@ atomic switches and affine nested games. Both template declaration
 versions execute through this graph runtime. The dictionary compatibility
 entry point retains the original extracted implementation.
 
-## Automated coverage
+### Automated coverage
+
+Commands in this historical section were run from `production/`, using
+its Python environment with test extras installed.
 
 The final inventory contains 184 tests. Verification was split between
 134 compatibility/parity tests in the full regression run and a final
@@ -34,7 +88,7 @@ conditioning cycles, nonlinear child costs and source mappings.
 Final Ruff, pycodestyle and named-definition docstring checks passed.
 Monetary reconciliation uses `rtol=1e-10`, `atol=1e-6`.
 
-## Deployment verification
+### Deployment verification
 
 Built `labor_cost_model-0.2.0` as a wheel and source distribution using
 cached dependencies. Installed the wheel separately from the source tree
@@ -48,7 +102,7 @@ original provenance. Standalone costing imported neither SHAP nor
 frontend/plotting modules. Export adds table checksums and schema metadata
 to the original manifest.
 
-## Runtime measurement
+### Runtime measurement
 
 Reproduce the synthetic workload in separate fresh processes:
 
@@ -85,9 +139,11 @@ sampling-accuracy estimates. Measure the intended production workload
 before selecting operational limits. Execution is synchronous; any future
 concurrent permutation execution must use separate processes.
 
-## Project isolation
+### Project isolation
 
-All project additions and changes are under `production/`. SHA-256 checks
+During that implementation session, all project additions and changes
+were under `production/`. Later approved documentation alignment updates
+the root guidance and methodology as well. SHA-256 checks
 against the saved baseline passed for all 15 existing source/configuration
 files, including the unchanged methodology and original test suite.
 The PoC notebook SHA-256 remains:
@@ -95,3 +151,38 @@ The PoC notebook SHA-256 remains:
 ```text
 03ca24c1e13bbca01587d1c95fe040ebf4a1021f5c9f9e3940fda712d94aea81
 ```
+
+
+## Documentation alignment verification — 2026-11-01
+
+This was a documentation-only update, not a full analytical regression or
+release-certification run. Existing calculation code, tests, notebook and
+experimental examples were retained unchanged.
+
+Checks performed for the updated contracts:
+
+- Built a wheel offline and installed it into a temporary target using
+  cached dependencies. Imported that installation with isolated Python
+  from a temporary working directory; the package was version 0.2.0.
+- Executed the root README's production example against independently
+  costed synthetic payroll, including negative monetary components.
+- Verified observed-only costing before SHAP/frontend modules were loaded,
+  then v1 exact, native v2 exact and native v2 permutation analyses.
+- Checked actual diagnostic names, both `team_summary` schemas and the
+  generic cell-impact columns. Confirmed cell rows are inner-game only.
+- Checked source-frame integrity, result-only team selection, validated
+  publication, catalog model/dataset resolution and numerical/provenance
+  round trips for every emitted table.
+- Executed the existing GUIDE.MD Python blocks in order, redirecting only
+  its publication destination to a temporary directory. The expected
+  6,575 → 6,982 endpoints and +407 bridge were preserved.
+- Reproduced the intentionally invalid GAP-001 model: recorded validation
+  still passes while population impacts are swapped. The gap remains open.
+- Checked the documented lifecycle CLI help, Python snippet syntax,
+  relative links/anchors and preservation of all 21 numbered methodology
+  headings. Reviewed the diff for documentation-only scope.
+
+Temporary installation and publication outputs were removed after the
+checks. The full historical test suite and performance benchmark were not
+rerun for this documentation change; their results above remain historical.
+See the [gap register](architecture-gaps.md) for outstanding requirements.

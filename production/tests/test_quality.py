@@ -32,7 +32,7 @@ def test_style_and_docstrings():
     assert style.check_files([str(p) for p in files]).total_errors == 0
 
 
-@pytest.mark.parametrize("mode", [None, "exact", "permutation"])
+@pytest.mark.parametrize("mode", [None, "preview", "exact", "permutation"])
 def test_thin_notebook_fresh_kernel(
     tmp_path, complete_frame, public_result, mode
 ):
@@ -77,17 +77,57 @@ def test_thin_notebook_fresh_kernel(
             "period_b = '2025-04'\nsource_cost_column = 'actual_cost'\n"
             f"explainer = {mode!r}\nselected_teams = ['Alpha']\n"
         )
-        notebook.cells.append(
-            nbformat.v4.new_code_cell(
-                "assert result.table('validation').passed.all()\n"
-                "assert result.select_teams(['Alpha']).run_id "
-                "== result.run_id\n"
+        if mode == "preview":
+            notebook.cells[1].source += (
+                "\ndataset_version = period_a = period_b = None\n"
             )
-        )
+            notebook.cells.append(nbformat.v4.new_code_cell(
+                "assert model is not None and result is None"
+            ))
+        else:
+            notebook.cells.append(
+                nbformat.v4.new_code_cell(
+                    "assert result.table('validation').passed.all()\n"
+                    "assert result.select_teams(['Alpha']).run_id "
+                    "== result.run_id\n"
+                )
+            )
     else:
         notebook.cells.append(
             nbformat.v4.new_code_cell("assert result is None")
         )
+    _execute_notebook(notebook, tmp_path)
+    previews = [
+        output.get("data", {}).get("text/markdown", "")
+        for cell in notebook.cells if cell.cell_type == "code"
+        for output in cell.outputs
+    ]
+    assert any("Cost: organization" in x for x in previews) == (
+        mode is not None
+    )
+
+
+def test_authoring_notebook_fresh_kernel(tmp_path):
+    """Author and display mathematics before any dataset or analysis exists."""
+    notebook = nbformat.read(ROOT / "examples/model_authoring.ipynb", 4)
+    nbformat.validate(notebook)
+    for cell in notebook.cells:
+        if cell.cell_type == "code":
+            assert cell.execution_count is None and not cell.outputs
+    _execute_notebook(notebook, tmp_path)
+    rich = [
+        output.get("data", {}).get("text/markdown", "")
+        for cell in notebook.cells if cell.cell_type == "code"
+        for output in cell.outputs
+    ]
+    assert sum(bool(x) for x in rich) == 6
+    assert any(r"\operatorname{AlignedMean}" in x for x in rich)
+    assert any(r"\sum_{i}" in x for x in rich)
+    assert any("Cost: organization" in x for x in rich)
+
+
+def _execute_notebook(notebook, tmp_path):
+    """Execute a temporary notebook with the current test interpreter."""
     kernels = tmp_path / "kernels"
     kernel = kernels / "labor-test"
     kernel.mkdir(parents=True)

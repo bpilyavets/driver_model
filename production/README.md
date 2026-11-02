@@ -2,13 +2,23 @@
 
 An installable, in-process calculation library and declarative model SDK.
 Everything in this implementation lives in this directory. The original
-PoC notebook remains unchanged and is used only as a test oracle.
+PoC notebook remains unchanged; production uses it only as a test oracle.
+It remains separately runnable as a legacy workflow.
 
 The analytical requirements in `../docs/labor-cost-decomposition.md`
 remain authoritative. The production package changes the deployment and
-authoring interface, not the built-in model's interpretation.
+authoring interface, not the built-in model's interpretation. General engine
+requirements and template-specific rules are explicitly scoped there.
+The [gap register](docs/architecture-gaps.md) records outstanding runtime
+requirements; this package is progressing toward production readiness.
 
 ## Install and run
+
+For a hosted Jupyter environment that installs code from an internal
+GitLab repository, use the [deployment guide](docs/gitlab-deployment.md)
+and [installation notebook](examples/gitlab_install.ipynb). They use your
+existing virtual-environment process and install a commit-pinned package
+through GitLab's API, without requiring Git or a package registry.
 
 Python 3.10 or later:
 
@@ -22,7 +32,7 @@ python -m pytest
 
 If the system lacks `ensurepip`, `uv venv .venv` followed by
 `uv pip install --python .venv/bin/python -e '.[test]'` is equivalent.
-The core dependency set contains no notebook, Streamlit or plotting
+The core dependency set contains no notebook or plotting
 requirement. SHAP is imported only when attribution is requested.
 
 ```python
@@ -43,8 +53,10 @@ team_view = result.select_teams(["Your team"])
 export_run(result, "runs/2026-08-to-09")  # Requires a new directory.
 ```
 
-Periods are explicit month starts or month strings. Input schema,
-exposure assignment and applicability rules match the PoC. Negative
+Periods are explicit month starts or month strings. This quickstart uses
+the built-in template's PoC source schema. Custom v2 models declare their
+own source mappings, populations, fields and applicability at the same
+employee/employment-type/month grain. Negative
 payments and totals are accepted; missing applicable values are errors.
 Default exposure splits one person's monthly workforce unit equally
 across observed employment types. A selected exposure column bypasses
@@ -57,7 +69,8 @@ and employee matching. `select_teams` selects existing results only.
 Organizational contributions and local team bridges must not be combined.
 
 `analyze_labor_cost` remains available as a compatibility entry point
-returning the original dictionary structure. New clients should use
+returning the original dictionary structure through the extracted legacy
+engine. It does not delegate to the graph runtime. New clients should use
 `analyze` and `AnalysisResult`.
 
 ## Analyst model creation
@@ -68,7 +81,8 @@ The source grain is always employee × employment type × month; team
 costs remain additive. Employment categories and dimension names are
 model declarations, not special engine branches.
 
-Start with [the complete authoring guide](docs/model-authoring.md) and
+Start with [the step-by-step walkthrough](examples/GUIDE.MD),
+[the authoring reference](docs/model-authoring.md) and
 [the independent hourly model](examples/author_models.py). It defines
 all layers explicitly, including grade-first or region-first composition,
 grouped rate/hour switches and optional nested earnings games.
@@ -80,6 +94,12 @@ model = labor_cost_model(schema_version=2)
 compiled = compile_model(model)
 print(compiled.inspect())
 ```
+
+For mathematical notation in Jupyter, use `render_model(model)` or
+`render_formula(expression)` while authoring. Both return a rich preview
+with a symbol legend. `Notation` overrides symbols without changing model
+identity. Start with [the authoring notebook](examples/model_authoring.ipynb)
+and [notation reference](docs/model-authoring.md#mathematical-previews).
 
 `labor_cost_model()` retains its v1 declaration/fingerprint and legacy
 output tables. Both declaration versions run through the graph compiler.
@@ -116,7 +136,10 @@ dashboard_bridge = saved.table("bridge")
 Loading verifies file checksums, model identity and the source snapshot.
 It neither runs an analysis nor imports an estimator. The bundle includes
 source/canonical tables, hierarchy, separate organizational/local bridges,
-assumptions, validation and diagnostics. Internal Python state objects are
+assumptions, validation and currently implemented graph diagnostics.
+Some legacy support/movement summaries and independent validation checks
+remain outstanding. V1/v2 model table schemas are not identical; consult
+the bundle contract before consuming them. Internal Python state objects are
 not serialized.
 
 For standalone costing, use `build_state(model, dataset, period)` followed
@@ -126,11 +149,12 @@ builder; `cost` never silently copies history or fills unknown rates.
 
 ## Frontend examples
 
+- Jupyter is the supported user-facing interface; install `.[notebook]`.
+- `examples/model_authoring.ipynb`: data-free formula authoring, notation
+  overrides, conditional distributions and nested equation sheets.
 - `examples/notebook_client.ipynb`: a thin, unexecuted notebook using the
-  package and catalog, with no embedded implementation or payroll data.
-- `examples/streamlit_app.py`: model/dataset/period selection, execution,
-  team result selection and bundle export. Install `.[streamlit]` and run
-  `streamlit run examples/streamlit_app.py -- /path/to/catalog.json`.
+  package and catalog, with model preview before analysis and no embedded
+  implementation or payroll data.
 - `examples/publish_catalog.py`: a command-line publication example using
   an existing Parquet dataset and a successful validation run.
 
@@ -144,6 +168,13 @@ ruff check src tests examples
 pycodestyle src tests examples
 ```
 
+Run these commands from `production/`. From the repository root use
+`production/.venv/bin/python -m pytest -c production/pyproject.toml production/tests`.
+The root PoC suite is separate:
+`production/.venv/bin/python -m pytest -c pytest.ini tests`.
+Select `production/.venv/bin/python` in your editor/kernel to avoid importing
+with an unrelated system interpreter.
+
 Tests retain the original compatibility regressions and compare both
 compiled template versions against the read-only notebook in exact and
 permutation modes. New-model tests exercise unrelated formulas, scoped
@@ -151,6 +182,9 @@ inputs, arbitrary dimensions, conditional distributions and nested games.
 Additional tests cover model compilation, multiplicative inputs,
 publication, bundles and frontend-independent imports. The regression
 oracle tests require this repository checkout; deployed packages do not.
+The reused `model` fixture tests the extracted engine; explicit graph API
+tests cover the new runtime. Do not equate total test count with graph
+coverage. See [GAP-004](docs/architecture-gaps.md#gap-004-coverage-by-execution-path).
 
 Exact remains the default, with the 15-player exact-game guard.
 Permutation must be selected explicitly; defaults are 256 forward/reverse

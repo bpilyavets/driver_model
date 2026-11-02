@@ -29,6 +29,7 @@ from .graph import (
 )
 from .graph_templates import local_game, organization_game, outer_factors
 from .models import labor_cost_model
+from .presentation import Notation, render_formula, render_model
 from .spec import DistributionSpec, InputSpec, ModelSpec, WorkforceStructure
 
 __version__ = "0.2.0"
@@ -60,6 +61,7 @@ __all__ = [
     "Expr",
     "InputSpec",
     "ModelSpec",
+    "Notation",
     "ResultView",
     "WorkforceStructure",
     "analyze",
@@ -72,4 +74,6 @@ __all__ = [
     "labor_cost_model",
     "load_run",
     "publish_model",
+    "render_formula",
+    "render_model",
 ]
