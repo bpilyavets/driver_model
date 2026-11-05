@@ -825,6 +825,59 @@ Do not add hierarchy parents to their children, or combine organizational
 contributions with local bridge contributions: those would double-count
 different representations of the explanation.
 
+### Plot the existing result in Jupyter
+
+Install `labor-cost-model[reporting]` from your approved package source
+(or `.[reporting]` from `production/`). The `[notebook]` extra also includes
+reporting. For the GitLab environment workflow, use
+[`runtime/requirements-reporting.txt`](../runtime/requirements-reporting.txt).
+
+```python
+from labor_cost import report
+
+charts = report(result, teams=["Operations"], show=False)
+# In JupyterLab/VS Code; use renderer="notebook" for classic Jupyter.
+charts.show(renderer="plotly_mimetype")
+```
+
+This displays the full organizational driver waterfall and table, a team
+summary, recorded validation/assumption/estimator summaries, and a separate
+**local** Operations waterfall. The organizational change remains +407 for
+this fixture. Selecting a team never changes the calculation population.
+
+Use an existing driver ID to compare organizational contributions by team:
+
+```python
+# IDs, not labels: inspect the report's driver table to choose a driver.
+team_driver_ids = result.table("bridge").loc[
+    lambda rows: rows["team"].notna(), "driver"
+].drop_duplicates()
+selected_driver = team_driver_ids.iloc[0]
+charts = report(
+    result, teams=["Operations"], driver=selected_driver, show=False,
+)
+charts.show(renderer="plotly_mimetype")
+```
+
+This chart shows the selected team's contribution to the organizational
+driver total. It is distinct from that driver's local impact. Workforce
+scale and other organization-wide drivers without team allocations cannot
+be selected for this chart. Zero and offsetting effects remain visible;
+no percentages are calculated from a driver's net contribution.
+
+Figures are ordinary editable Plotly objects:
+
+```python
+figure = charts.figures["organization"]
+figure.update_layout(title="Our labor-cost change")
+# Optional explicit export; includes Plotly.js for offline viewing.
+# figure.write_html("organization.html", include_plotlyjs=True)
+```
+
+Reporting also works after `load_run`, without internal states or another
+analysis call. See the [reporting reference](../docs/reporting.md) for
+standalone plotting functions, supported schemas and renderer setup.
+
 ## 12. Publish only after the declaration behaves as intended
 
 Everything above works without a catalog. Once the model passes

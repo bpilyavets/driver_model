@@ -38,6 +38,12 @@ Use your company's existing virtual-environment instructions with
 the package's four core dependency constraints and `requests` for the
 GitLab connection. Its agreement with `pyproject.toml` is tested.
 
+For Plotly result reports, use
+[runtime/requirements-reporting.txt](../runtime/requirements-reporting.txt)
+instead. It extends that core recipe with the reporting dependencies;
+the installation procedure stays the same. See the
+[reporting guide](reporting.md) for hosted notebook renderer settings.
+
 Select that environment's Jupyter kernel. It must provide pip and permit
 installation into the selected environment. Keep the company's existing
 kernel-registration process; this guide does not replace it. An existing

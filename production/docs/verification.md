@@ -186,3 +186,30 @@ Temporary installation and publication outputs were removed after the
 checks. The full historical test suite and performance benchmark were not
 rerun for this documentation change; their results above remain historical.
 See the [gap register](architecture-gaps.md) for outstanding requirements.
+
+## Plotly reporting verification — 2026-11-06
+
+The reporting suite and the updated thin-client fresh-kernel checks passed:
+**40 tests**, covering v1/v2 exact/permutation results, nested custom models,
+team entry/exit, negative endpoints, zero net changes and offsetting effects,
+duplicate labels, precise chart values, selectors and malformed inputs.
+Round-trip chart data matched, including the genuine schema-one bundle.
+Reporting with calculation entry points blocked passed; tables, nested
+object cells and manifest data remained unchanged.
+
+A separately installed wheel compiled, costed and analyzed the deployment
+fixture with Plotly/IPython/nbformat absent. Installing its `reporting`
+extra enabled charts from a restored bundle with SHAP imports blocked.
+Offline HTML charts were rendered in headless Chrome and visually inspected,
+including positive/negative endpoints, local allocations, duplicate labels
+and offsetting team bars. All 25 GUIDE Python blocks executed, including
+reporting and temporary publication; its +407 change was preserved.
+
+Focused Ruff, pycodestyle, named-definition docstrings, clean client-notebook
+outputs and documentation-link checks passed. The wider existing quality
+suite has two unrelated failures retained unchanged: formatting errors in
+`examples/poc_extented_model_test.py` and saved execution outputs in
+`examples/model_authoring.ipynb`. Repository-wide Ruff also flags existing
+imports in the experimental script and GitLab installation notebook.
+Those files were not changed by the reporting work. The complete analytical
+regression suite was not rerun, and existing architecture gaps remain open.

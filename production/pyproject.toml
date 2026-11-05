@@ -19,8 +19,12 @@ test = [
     "pytest>=8,<10", "pycodestyle>=2.12,<3", "ruff>=0.11,<1",
     "matplotlib>=3.8,<4", "ipython>=8,<9",
     "nbformat>=5.9,<6", "nbclient==0.10.2", "ipykernel>=6.25,<7",
+    "plotly>=6,<7",
 ]
-notebook = ["jupyterlab>=4,<5"]
+reporting = ["plotly>=6,<7", "ipython>=8,<10", "nbformat>=5.9,<6"]
+notebook = [
+    "jupyterlab>=4,<5", "plotly>=6,<7", "ipython>=8,<10", "nbformat>=5.9,<6",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

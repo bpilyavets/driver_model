@@ -105,6 +105,11 @@ only tables and metadata. To recompute, compile the stored model, create a
 snapshot from `source_snapshot`, and use the stored settings. Source data
 outside the selected periods are not needed by this run.
 
+The optional [Plotly reporting layer](reporting.md) consumes a loaded
+`AnalysisResult` directly. It uses existing currency bridges and metadata;
+neither internal states nor recalculation are needed. Figures are separate
+presentation objects, not a new bundle table or schema revision.
+
 ## Team views
 
 `result.select_teams([...])` returns selected organizational contributions,

@@ -124,6 +124,13 @@ accessible in its execution environment.
 
 See [the bundle contract](docs/run-bundles.md).
 
+For interactive notebook charts, install `.[reporting]` (also included in
+`.[notebook]`) and use `report(result, teams=[...])`. The
+[reporting reference](docs/reporting.md) covers Plotly organizational and
+local waterfalls, driver contributions by team and offline HTML export.
+Reporting consumes existing results, including those restored by `load_run`,
+without recalculating attribution.
+
 ```python
 from labor_cost import load_run
 
