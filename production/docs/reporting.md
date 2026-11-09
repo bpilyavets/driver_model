@@ -1,5 +1,10 @@
 # Plotly result reporting
 
+For a runnable example, open the
+[reporting showcase notebook](../examples/reporting_showcase.ipynb).
+It uses the model and nine mock rows from `poc_extented_model_test.py`,
+then demonstrates reports, individual figures, styling and saved runs.
+
 `report` consumes an existing `AnalysisResult` from `analyze` or `load_run`.
 It reads portable tables and metadata only, including runs whose `states`
 are `None`. It never compiles a model, constructs states, evaluates costs
