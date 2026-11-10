@@ -146,6 +146,39 @@ or rerun installation midway through an analysis.
 | Import fails or shows old code | Restart the kernel and check `sys.executable` and `labor_cost.__file__`; avoid a local file named `labor_cost.py`. |
 | Invalid ZIP or missing `pyproject.toml` | Check the archive endpoint response and `PACKAGE_SUBDIR`; authentication HTML is not a package archive. |
 
+### Metadata missing after pip succeeds
+
+Older bootstraps verified installation with `python -I`. That isolated
+process hides user-site packages and ignores `PYTHONPATH`, even though the
+preceding pip command uses normal Python startup. A hosted environment
+can therefore install successfully and then report
+`PackageNotFoundError: labor-cost-model` during verification.
+
+The current bootstrap uses the same interpreter and normal path lookup for
+both commands. Update `production/runtime/bootstrap.py` in GitLab and rerun
+the installation cell at that updated commit. The GitLab authentication
+cell does not need to change.
+
+To check an already installed package, restart the notebook kernel and run:
+
+```python
+import sys
+from importlib.metadata import version
+
+import labor_cost
+
+print("Python:", sys.executable)
+print("Version:", version("labor-cost-model"))
+print("Module:", labor_cost.__file__)
+```
+
+If normal startup still cannot find it, check `sys.executable` and the
+destination reported by `sys.executable -m pip show labor-cost-model`.
+Pip configuration such as `PIP_TARGET` or `PIP_PREFIX` can install outside
+the interpreter's search path; removing isolation does not fix an
+unreachable installation destination. Use the company's environment setup
+to align the pip destination and selected kernel.
+
 Installation failures raise an error and do not return a success summary.
 Temporary downloads are cleaned, but pip may have partially updated the
 environment; recreate it with your normal procedure if necessary.

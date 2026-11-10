@@ -182,8 +182,10 @@ def install_project(
             sys.executable, "-m", "pip", "--disable-pip-version-check",
             "--no-input", "install", str(package),
         ], session)
+        # Match pip's normal site/environment lookup. Isolated mode (-I)
+        # hides user-site installs and paths configured by hosted kernels.
         metadata = _run([
-            sys.executable, "-I", "-c",
+            sys.executable, "-c",
             "import json, sys; from importlib.metadata import version; "
             "print(json.dumps({'package_version': "
             "version('labor-cost-model'), 'python': sys.executable}))",

@@ -196,6 +196,46 @@ def test_root_package_layout(gitlab, session, pip_stub):
     assert len(pip_stub) == 2
 
 
+@pytest.mark.parametrize("location", ["user_site", "pythonpath"])
+def test_verification_preserves_install_paths(
+    gitlab, session, monkeypatch, tmp_path, location,
+):
+    """Discover pip's installed metadata using normal hosted Python paths."""
+    interpreter = str(Path(sys._base_executable).resolve())
+    real_run = subprocess.run
+    monkeypatch.setenv("PYTHONUSERBASE", str(tmp_path / "user"))
+    monkeypatch.delenv("PYTHONNOUSERSITE", raising=False)
+    monkeypatch.delenv("PYTHONPATH", raising=False)
+    if location == "user_site":
+        checked = real_run(
+            [interpreter, "-c",
+             "import site; print(site.getusersitepackages())"],
+            capture_output=True, text=True, check=True,
+        )
+        destination = Path(checked.stdout.strip())
+    else:
+        destination = tmp_path / "hosted-packages"
+        monkeypatch.setenv("PYTHONPATH", str(destination))
+
+    def install_then_verify(command, **options):
+        """Simulate pip writing metadata, then run real Python verification."""
+        if "install" in command:
+            metadata = destination / "labor_cost_model-9.8.7.dist-info"
+            metadata.mkdir(parents=True)
+            (metadata / "METADATA").write_text(
+                "Metadata-Version: 2.1\n"
+                "Name: labor-cost-model\nVersion: 9.8.7\n"
+            )
+            return subprocess.CompletedProcess(command, 0, "installed", "")
+        return real_run(command, **options)
+
+    monkeypatch.setattr(bootstrap.sys, "executable", interpreter)
+    monkeypatch.setattr(bootstrap.subprocess, "run", install_then_verify)
+    summary = bootstrap.install_project(gitlab["api"], 123, SHA, session)
+    assert summary["package_version"] == "9.8.7"
+    assert summary["python"] == interpreter
+
+
 def test_pip_failure_redacts_and_cleans(gitlab, session, monkeypatch):
     """Do not return success or retain source after partial pip failure."""
     paths = []
