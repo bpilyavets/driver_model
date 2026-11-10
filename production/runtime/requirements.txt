@@ -4,5 +4,5 @@ numpy>=1.26,<2
 pandas>=2.1,<3
 shap==0.48.0
 pyarrow>=14,<24
-# Used only by the GitLab installation cell/bootstrap, not the engine.
+# Used only by GitLab source-loading/installation, not the engine.
 requests>=2.31,<3

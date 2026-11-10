@@ -213,3 +213,31 @@ suite has two unrelated failures retained unchanged: formatting errors in
 imports in the experimental script and GitLab installation notebook.
 Those files were not changed by the reporting work. The complete analytical
 regression suite was not rerun, and existing architecture gaps remain open.
+
+## Direct GitLab source loading — 2026-11-10
+
+The source-loader and existing pip-deployment suites passed **67 tests**;
+the opt-in real pip-installation test was skipped. The new workflow does
+not invoke pip. Tests cover pinned/authenticated downloads, encoded project
+paths, both repository layouts, streaming/extraction limits, invalid archives,
+partial-import cleanup and independent runtime namespaces. Closing one
+runtime leaves another runtime and an installed package untouched.
+
+A fresh notebook kernel ran with third-party dependencies but without
+`labor-cost-model` source on its import path or distribution metadata.
+The delivered loading cells fetched bootstrap and package from the same
+simulated GitLab commit, cleared authentication headers, and used the
+runtime handle for compilation, formula display, standalone costing,
+the reconciled signed −100 → 150 analysis and two Plotly waterfalls.
+Installation subprocesses were prohibited during this check.
+
+The unchanged experimental model/mock rows ran through private runtimes
+in exact and permutation modes, preserving the +1,799 change. Run bundles
+loaded into a separate runtime without states, and organizational chart
+data matched. No calculation code or existing notebook was changed.
+
+Focused style, clean notebook outputs, documentation links and scope checks
+passed. The full analytical regression suite was not rerun. Local endpoint
+tests do not verify access to the company's GitLab; the hosted notebook's
+displayed commit/version/path and successful smoke analysis remain the final
+deployment check. Existing analytical gaps remain open.

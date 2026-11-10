@@ -16,9 +16,12 @@ requirements; this package is progressing toward production readiness.
 
 For a hosted Jupyter environment that installs code from an internal
 GitLab repository, use the [deployment guide](docs/gitlab-deployment.md)
-and [installation notebook](examples/gitlab_install.ipynb). They use your
-existing virtual-environment process and install a commit-pinned package
-through GitLab's API, without requiring Git or a package registry.
+and [direct-loading notebook](examples/gitlab_load.ipynb). They load a
+commit-pinned copy into the current kernel without installing our package:
+use `lc = CODE.package`, then `lc.analyze(...)` and `lc.report(...)`.
+Third-party dependencies come from your existing environment process.
+The [pip installation notebook](examples/gitlab_install.ipynb) remains an
+alternative for environments that support ordinary package installation.
 
 Python 3.10 or later:
 

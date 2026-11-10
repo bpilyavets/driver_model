@@ -25,10 +25,12 @@ Plotly is imported on first figure creation; IPython only on display.
 
 For hosted GitLab deployment use
 [`runtime/requirements-reporting.txt`](../runtime/requirements-reporting.txt)
-with your company's existing environment procedure, then install the
-package through the [GitLab notebook](../examples/gitlab_install.ipynb).
+with your company's existing environment procedure, then load the
+package through the [GitLab notebook](../examples/gitlab_load.ipynb).
+Use `lc.report(...)` through its `lc = CODE.package` handle.
 That requirements file extends the core deployment requirements; it does
-not install a Jupyter server. Restart the kernel after environment changes.
+not install a Jupyter server. Restart the kernel after dependency changes;
+loading the package source itself needs no restart.
 
 ## Build and display a report
 
