@@ -213,3 +213,10 @@ against a supplied dataset. Its output is workload evidence, not a latency
 commitment. No production-sized dataset was supplied with this repository.
 See [verification results](docs/verification.md) for regression coverage,
 installed-wheel checks and a reproducible synthetic runtime measurement.
+
+
+Compare employee-aligned, grouped, and effective-rate specifications with
+[the comparison notebook](examples/model_comparison.ipynb). Engine 0.3.0
+adds typed cell means and workload-weighted rates to v2 declarations;
+existing models retain their identities and behavior. See the
+[aggregation contract](docs/model-authoring.md#effective-rate-and-worked-time-engine-030).

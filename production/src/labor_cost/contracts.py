@@ -8,7 +8,7 @@ from hashlib import sha256
 import numpy as np
 import pandas as pd
 
-ENGINE_VERSION = "0.2.0"
+ENGINE_VERSION = "0.3.0"
 BUNDLE_VERSION = 2
 
 

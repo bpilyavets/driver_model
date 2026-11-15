@@ -241,3 +241,52 @@ passed. The full analytical regression suite was not rerun. Local endpoint
 tests do not verify access to the company's GitLab; the hosted notebook's
 displayed commit/version/path and successful smoke analysis remain the final
 deployment check. Existing analytical gaps remain open.
+
+
+## 2026-11-15 — Effective-rate and worked-time models
+
+Implemented v2 `mean` and `weighted_mean` factors, explicit zero-weight
+completion, aggregate-factor evidence, typed previews and an unexecuted
+production-data comparison notebook. Package/engine version is 0.3.0;
+model and bundle schemas remain 2. Built-in v1/v2 fingerprints remain
+`8c1c5816b8465efa77ba324fa20cfaacea3ad80f896daebe56c07e1a09c5e990` and
+`cbdb8d7123a97113dc03eac507be17d20ecffa23f59fc71bbaffafa555f874ef`.
+
+Evidence from this implementation session:
+
+- Final focused suite: **58 passed, 6 deselected** (25.36 s). Command:
+  `python -m pytest -c production/pyproject.toml production/tests/test_aggregates.py production/tests/test_presentation.py production/tests/test_quality.py -k 'aggregates or presentation or comparison_notebook' -q`.
+  Includes both bases, hourly/monthly units, exact/permutation attribution,
+  zero/tiny quantities, replacement, transfer, multiple employment types,
+  conditional cells, regional adjustment, signed payroll, reference and
+  fallback provenance, cell identities, stable fingerprints, portable
+  evidence, previews, and no-optional-import standalone costing.
+- Comparison notebook fresh-kernel tests pass with no configuration and
+  with configured exact and permutation runs. The saved notebook has no
+  outputs or execution counts. All three models reconcile to the same
+  source payroll; different driver definitions retain separate tables.
+- Full production run: **342 passed, 1 skipped, 2 failed** (435.81 s).
+  The final focused run additionally covers tests added/refined after
+  collection of that full run; the complete suite was not rerun afterward.
+- Both full-run failures are pre-existing: `test_style_and_docstrings`
+  finds E501 at line 194 and W292 at line 418 of the unchanged user
+  experiment `examples/poc_extented_model_test.py`;
+  `test_authoring_notebook_fresh_kernel` rejects stored outputs in the
+  unchanged `examples/model_authoring.ipynb`. Its execution counts 1–7
+  are also present in HEAD. Neither file was cleaned or modified.
+- Root PoC regressions: **153 passed**, one existing noninteractive
+  Matplotlib warning (324.21 s). The PoC notebook remains unchanged.
+- Maintained Python style and new-notebook Ruff checks pass. Broad Ruff
+  also reports the pre-existing import-order issue in
+  `examples/gitlab_install.ipynb`; this and the user experiment were
+  excluded from the clean maintained-code check. `git diff --check` passes.
+- Visually inspected a temporary executed notebook in JupyterLab/Chromium
+  using synthetic zero-hour data. All three Plotly reports render; the
+  aggregate definitions and zero-weight piecewise formula are readable.
+  Browser inspection found 127 math elements, no MathJax errors, and three
+  charts. Temporary Jupyter server and its kernel were shut down.
+
+These checks establish the new aggregate identities and example workflow,
+not validation of an organization's production data. General reconciliation
+and diagnostic gaps in architecture-gaps.md remain open. No production
+payroll data or executed outputs were added to repository notebooks.

@@ -412,3 +412,89 @@ V1 catalog entries and run bundles remain readable. New bundles use
 schema 2 and include the compiled declaration graph. Model publication
 never overwrites an existing version, and deployed execution never loads
 the PoC notebook.
+
+## Effective rate and worked time (engine 0.3.0+)
+
+V2 models can replace an employee-aligned base-pay component with effective
+rate × worked time per exposure. This changes the attribution definition;
+it does not change actual row payroll. Existing aligned models and grouped
+switches remain supported. The new types are `mean` and `weighted_mean`:
+
+```python
+cell = dict(
+    population="permanent",
+    dimensions=("coefficient_band", "grade"),
+    fallbacks=(("grade",), ("coefficient_band",), ()),
+)
+hours = Factor(
+    "hours_per_exposure", "mean", source="permanent_hours",
+    basis="actual", **cell,
+)
+rate = Factor(
+    "effective_rate", "weighted_mean", source="permanent_rate",
+    weight="permanent_hours", basis="actual",
+    zero_weight="exposure_mean", **cell,
+)
+base_pay = value("effective_rate") * value("hours_per_exposure")
+switches = (
+    Switch("effective_rate", label="Effective hourly rate"),
+    Switch("hours_per_exposure", label="Hours per exposure"),
+)
+```
+
+`source` and `weight` name declared fields, not source columns or other
+factors. New aggregates accept a source field, not a row formula or
+conditional `given` axes. Weight options apply only to `weighted_mean`.
+Weight fields must declare `positive` or `nonnegative` constraints.
+Use the same population, cell dimensions, basis and fallback order for
+the rate/time pair. Multiply `base_pay` by regional policy and composition
+shares in the aggregate formula, and reduce both cell axes as usual.
+Remove the old rate/time/membership factors and switches for this component.
+Unrelated components can retain their own membership factors.
+
+For selected donor rows, let E = sum(e_i), with e_i the assigned exposure:
+
+| Kind | Actual quantity basis | Per-exposure quantity basis |
+| --- | --- | --- |
+| `mean`, source h | sum(h_i) / E | sum(e_i h_i) / E |
+| `weighted_mean`, source r and weight h | sum(h_i r_i) / sum(h_i) | sum(e_i h_i r_i) / sum(e_i h_i) |
+
+The basis applies to the quantity/weight, never to the rate. For actual
+hours use `time`; for normalized hours use `time/exposure`. Monthly salary
+uses a dimensionless worked fraction, or `1/exposure` if already normalized.
+`mean` with actual basis divides the source units by exposure; per-exposure
+basis preserves the source units. `weighted_mean` preserves rate units.
+Source positivity/nonnegativity constraints also apply to the resulting
+state factors, including explicit reference states.
+
+For hourly pay, E × hours-per-exposure × effective-rate equals the sum of
+paired actual rate × hours. The rate is weighted by hours: moving hours
+between employees can change it even when every contractual rate stays
+fixed. It is not an ordinary average contractual rate or a pure raise
+measure. Monthly salary × worked fraction follows the same identity with
+different units and labels. Exposure is not automatically headcount or FTE.
+
+A populated cell with zero hours has no observed effective rate. Explicit
+`zero_weight="exposure_mean"` uses sum(e_i r_i) / E from that same donor
+pool. Hours and observed payroll remain zero. This assumption can affect
+counterfactuals and is recorded by cell in `assumptions` and
+`diagnostics/aggregate_factors`. The default `zero_weight="error"` fails
+with context instead. Strictly positive weights, however small, do not
+activate the zero-weight policy. Negative weights are invalid.
+
+Sparse fallback chooses a nonempty same-team/period donor pool before
+aggregation. A populated zero-hour cell does not search other cells for
+positive hours. Whole-population/team completion and explicit references
+keep their existing semantics. References for the new factors are typed
+cell tensors; unknown underlying numerator/support statistics are not
+invented. Standalone `build_state` and `cost` need no comparison history
+for the declared zero-hour policy.
+
+Use [model_comparison.ipynb](../examples/model_comparison.ipynb) and its
+editable [comparison_models.py](../examples/comparison_models.py) to compare
+aligned, grouped rate/membership, and effective-rate variants on the same
+catalog dataset. The example follows the permanent/temporary walkthrough,
+including regional policy and conditional grade composition. It changes
+only permanent base pay; adapt other rate × time components explicitly.
+Models retain separate fingerprints and run bundles. Driver tables remain
+separate because their definitions differ; absence is not zero impact.

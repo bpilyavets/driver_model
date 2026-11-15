@@ -455,6 +455,38 @@ policy remains an assumption; differing A/B coefficient schedules fail explicitl
 
 ---
 
+## Optional v2 effective-rate representation
+
+Custom models may instead represent a base-pay cell by effective rate R
+and worked quantity per exposure H. With actual quantities h_i and rates
+r_i, define R = sum(h_i r_i) / sum(h_i) and H = sum(h_i) / sum(e_i).
+Then cell payroll before regional adjustment is sum(e_i) × H × R.
+This preserves paired payroll; it is not a product of independent means.
+For supplied per-exposure quantities, replace h_i by e_i h_i in both sums.
+Hours and worked fractions need their own units and accurate labels.
+
+The complete rate and quantity tables are separate switches. A rate effect
+can reflect reassignment of hours, workforce turnover, and individual rate
+changes. It does not retain the employee-aligned template's unchanged-rate
+zero-impact guarantee. Grade/region distributions and fixed regional policy
+remain separate declarations; the original built-in model remains unchanged.
+
+For a populated zero-quantity cell, the explicitly selected policy
+`zero_weight="exposure_mean"` supplies sum(e_i r_i) / sum(e_i) from that
+cell's donor pool. Quantity and observed base payroll remain zero. Record
+this assumption because it affects positive-quantity counterfactuals.
+Without an explicit zero-weight policy, construction fails. Sparse support
+and complete missing-population/team completion retain their existing
+boundaries; no positive workload is manufactured for zero-workload cells.
+
+The two primitives and production-data comparison workflow are documented
+in the [authoring reference](../production/docs/model-authoring.md#effective-rate-and-worked-time-engine-030).
+Comparisons must use identical source data and row formulas. Equal endpoint
+costs do not imply equivalent attribution definitions, and existing general
+population-reconciliation and diagnostic gaps remain open.
+
+---
+
 # 8. Grade and salary identification
 
 **Scope: identification limits of the built-in template dataset.** Other

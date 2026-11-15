@@ -27,7 +27,12 @@ from .graph_states import (
 
 def _state_tables(plan, states, diagnostic):
     """Expose typed state values and sparse memberships as portable tables."""
-    values, profiles, aligned = [], [], []
+    values, profiles, aligned, aggregates = [], [], [], []
+    evidence = {
+        (r["period"], r["team"], r["population"], r["factor"],
+         tuple(r["coordinates"].items())): r
+        for r in diagnostic["aggregate_factors"].to_dict("records")
+    }
     assumptions = diagnostic["assumptions"].to_dict("records")
     matching = {
         (
@@ -110,6 +115,24 @@ def _state_tables(plan, states, diagnostic):
                             d: item.axes[j][i]
                             for j, (d, i) in enumerate(zip(item.dims, index))
                         }
+                        if specs[name].kind in {"mean", "weighted_mean"}:
+                            key = (
+                                completion["source_period"], team, population,
+                                name, tuple(coordinates.items()),
+                            )
+                            record = dict(evidence.get(key, {}))
+                            record.update(context)
+                            record.update({
+                                "coordinates": coordinates,
+                                "value": float(item.data[index]),
+                                "kind": specs[name].kind,
+                                "source": specs[name].source,
+                                "weight": specs[name].weight,
+                                "basis": specs[name].basis,
+                            })
+                            if not evidence.get(key):
+                                record["method"] = "explicit_reference"
+                            aggregates.append(record)
                         values.append(
                             {
                                 **context,
@@ -139,6 +162,7 @@ def _state_tables(plan, states, diagnostic):
                                     "base_pay_factor": float(conversion),
                                 }
                             )
+    diagnostic["aggregate_factors"] = pd.DataFrame(aggregates)
     return {
         "diagnostics/state_factors": pd.DataFrame(values),
         "diagnostics/membership_profiles": pd.DataFrame(profiles),
@@ -149,6 +173,11 @@ def _state_tables(plan, states, diagnostic):
 def _completion(period, team, population, assumptions):
     """Identify the completed economics supplying a scoped state's values."""
     for record in assumptions:
+        if record["method"] not in {
+            "carry_observed", "carry_organization_mix",
+            "explicit_reference", "explicit_team_reference"
+        }:
+            continue
         if record["period"] != period or record["team"] != team:
             continue
         if (
@@ -262,10 +291,14 @@ def analyze_graph(compiled, dataset, request):
     exported = canonical.copy(deep=True)
     masks = population_masks(graph, canonical)
     for factor in graph.factors:
-        if factor.kind != "payment":
+        if factor.kind not in {"payment", "mean"}:
             continue
         active = masks[factor.population]
-        normalized = row_evaluate(factor.formula, canonical.loc[active])
+        normalized = (
+            row_evaluate(factor.formula, canonical.loc[active])
+            if factor.kind == "payment"
+            else canonical.loc[active, factor.source].copy()
+        )
         if factor.basis == "actual":
             normalized = normalized / canonical.loc[active, "exposure"]
         exported["per_exposure__" + factor.name] = np.nan

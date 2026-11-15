@@ -208,7 +208,9 @@ def validate_factors(specs, values, fields=()):
         if item.dims != expected_dims:
             raise ValueError(f"factor {spec.name}: incorrect named axes")
         data = item.data
-        if spec.kind in {"aligned", "policy"} and spec.source in field_map:
+        if spec.kind in {
+            "aligned", "policy", "mean", "weighted_mean"
+        } and spec.source in field_map:
             constraint = field_map[spec.source].constraint
             if constraint == "positive" and (data <= 0).any():
                 raise ValueError(

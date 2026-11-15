@@ -919,3 +919,63 @@ controls individual payroll; `Factor` controls distributions and
 representations; aggregate expressions control how they produce cost; and
 `Switch`/`Game` control the explanation.** Changing one layer does not
 automatically infer your intentions for the others.
+
+## 13. Compare effective-rate and employee-aligned specifications
+
+Open [model_comparison.ipynb](model_comparison.ipynb) with
+[comparison_models.py](comparison_models.py) beside it. The latter is an
+editable declaration example, not a converter for arbitrary payroll models.
+It extends this guide with coefficient-band shares, grade shares conditional
+on band, and a fixed regional coefficient. Its permanent bonus is assumed
+pre-regional and eligible for adjustment; edit the common row and aggregate
+formulas if your source uses different rules.
+
+The notebook accepts catalog/dataset settings, field and source mappings,
+periods, exposure and independent source-cost columns, exact/permutation
+settings, and an optional export directory. With no dataset configured it
+shows equation sheets only. With data, it runs these models sequentially:
+
+| Variant | Permanent base-pay switches |
+| --- | --- |
+| Aligned | Employee rate, employee hours, membership |
+| Grouped | Rate + membership together, employee hours separately |
+| Effective | Hours-weighted effective rate, hours per exposure |
+
+All variants use the same dataset and actual row payroll. The notebook
+checks identical snapshots, row costs and endpoints, then displays each
+model's own driver table/report, estimator evidence, and assumptions.
+Rerun the report cell to change team views without rerunning analysis.
+Exports are separate bundles named by variant and run ID.
+
+For the effective variant, declare the two new aggregate factors:
+
+```python
+Factor(
+    "hours_per_exposure", "mean", population="permanent",
+    source="permanent_hours",
+    dimensions=("coefficient_band", "grade"),
+    fallbacks=(("grade",), ("coefficient_band",), ()),
+)
+Factor(
+    "effective_rate", "weighted_mean", population="permanent",
+    source="permanent_rate", weight="permanent_hours",
+    dimensions=("coefficient_band", "grade"),
+    fallbacks=(("grade",), ("coefficient_band",), ()),
+    zero_weight="exposure_mean",
+)
+```
+
+These require engine 0.3.0 or later. Multiply their `value(...)` expressions
+inside the existing composition/policy formula and give each its own
+`Switch`. Do not retain membership for that rewritten base-pay component.
+
+Effective rate is sum(rate × hours) / sum(hours); hours per exposure is
+sum(hours) / sum(exposure). Reallocating hours between unchanged-rate
+employees can therefore change effective rate. A zero-hour cell uses its
+exposure-weighted contractual rate as an explicit assumption, without
+changing its observed zero hours. Inspect `diagnostics/aggregate_factors`.
+
+For monthly salaries, use salary and worked fraction fields instead, with
+`currency` and `dimensionless` units and corresponding labels. Already
+normalized quantities use `basis="per_exposure"` and `time/exposure` or
+`1/exposure` units. See the full [aggregation contract](../docs/model-authoring.md#effective-rate-and-worked-time-engine-030).

@@ -12,6 +12,8 @@ UNITS = {
     "currency/time": (1, -1, 0),
     "exposure": (0, 0, 1),
     "currency/exposure": (1, 0, -1),
+    "time/exposure": (0, 1, -1),
+    "1/exposure": (0, 0, -1),
 }
 PER_EXPOSURE = (1, 0, -1)
 EXPOSURE = (0, 0, 1)
@@ -35,6 +37,25 @@ def row_units(expr, fields, path):
             raise ValueError(f"{path}: incompatible row units")
         result = units
     return result or UNITS["currency"]
+
+
+def factor_units(item, fields):
+    """Infer units of field-based factors without presentation dependencies."""
+    units = UNITS[fields[item.source].units]
+    if item.kind == "mean" and item.basis == "actual":
+        units = add_units(units, (0, 0, -1))
+    return units
+
+
+def unit_label(units):
+    """Describe inferred dimensions, including uncommon compound units."""
+    for name, value in UNITS.items():
+        if value == units:
+            return name
+    return " * ".join(
+        f"{name}^{power}" for name, power in
+        zip(("currency", "time", "exposure"), units) if power
+    ) or "dimensionless"
 
 
 def refs(expr, kind):
@@ -225,6 +246,8 @@ def compile_graph(graph):
             "membership",
             "payment",
             "policy",
+            "mean",
+            "weighted_mean",
         }:
             raise ValueError(f"{path}: unsupported state primitive")
         if item.basis not in {"actual", "per_exposure"}:
@@ -259,7 +282,29 @@ def compile_graph(graph):
             support = item.given if item.kind == "distribution" else axes
             if set(fallback) - set(support):
                 raise ValueError(f"{path}: fallback must drop cell dimensions")
-        if item.kind in {"aligned", "policy"}:
+        if item.kind != "weighted_mean" and (
+            item.weight is not None or item.zero_weight != "error"
+        ):
+            raise ValueError(f"{path}: weight options need weighted_mean")
+        if item.kind in {"mean", "weighted_mean"}:
+            if item.given or item.formula is not None or item.members:
+                raise ValueError(f"{path}: use source and cell dimensions")
+        if item.kind == "weighted_mean":
+            if item.zero_weight not in {"error", "exposure_mean"}:
+                raise ValueError(f"{path}: unknown zero_weight policy")
+            weight = fields.get(item.weight)
+            if weight is None:
+                raise ValueError(f"{path}: weight needs a declared field")
+            if weight.population not in {"all", item.population}:
+                raise ValueError(f"{path}: weight population is incompatible")
+            if weight.constraint not in {"positive", "nonnegative"}:
+                raise ValueError(f"{path}: weight must be nonnegative")
+            allowed = ({"time", "dimensionless"}
+                       if item.basis == "actual" else
+                       {"time/exposure", "1/exposure"})
+            if weight.units not in allowed:
+                raise ValueError(f"{path}: weight units differ from basis")
+        if item.kind in {"aligned", "policy", "mean", "weighted_mean"}:
             if item.source not in fields:
                 raise ValueError(f"{path}: source must name a declared field")
             if fields[item.source].population not in {"all", item.population}:
@@ -435,7 +480,7 @@ def _type(expr, factors, fields, games, outer):
             return dims, PER_EXPOSURE
         if item.kind == "membership":
             raise ValueError("Membership must be consumed by aligned_mean")
-        units = UNITS[fields[item.source].units]
+        units = factor_units(item, fields)
         if item.kind == "aligned":
             dims = ("employee:" + item.population,)
         return dims, units

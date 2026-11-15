@@ -400,6 +400,16 @@ class _Renderer:
                     units = getattr(original, "units", None)
                 elif item.kind in {"distribution", "population_mix"}:
                     units = "dimensionless"
+                elif item.kind in {"mean", "weighted_mean"}:
+                    from .graph_compile import factor_units, unit_label
+
+                    fields = self.declarations["fields"]
+                    units = unit_label(factor_units(item, fields))
+                    original = fields[item.source]
+                    source = f"{item.source} <- {original.source}"
+                    if item.weight is not None:
+                        weight = fields[item.weight]
+                        source += f"; weight: {item.weight} <- {weight.source}"
                 elif item.kind == "payment":
                     units = "currency/exposure"
                     source = str(item.formula)
@@ -411,7 +421,9 @@ class _Renderer:
                     units = f"weights: dimensionless; conversion: {conversion}"
                 if item.kind == "aligned":
                     dimensions = ("employee/employment_type",)
-                if item.kind not in {"membership", "payment"}:
+                if item.kind not in {
+                    "membership", "payment", "mean", "weighted_mean"
+                }:
                     basis = None
             if namespace == "games" and item is not None:
                 outer = item in (self.graph.organization, self.graph.local)
@@ -432,6 +444,10 @@ class _Renderer:
                 "source": source, "population": population,
                 "dimensions": dimensions, "units": units,
                 "basis": basis, "scope": scope,
+                "weight": getattr(item, "weight", None),
+                "zero_weight": (item.zero_weight if
+                                getattr(item, "kind", None) ==
+                                "weighted_mean" else None),
             }))
         return tuple(entries)
 
@@ -515,6 +531,47 @@ def _preview(renderer, equations, notes):
                           "\n".join(x for x in plain if x))
 
 
+def _aggregate_equations(renderer, names=None):
+    """Explain field aggregates over the declared cell's donor records."""
+    if renderer.graph is None:
+        return []
+    equations = []
+    for item in renderer.graph.factors:
+        if item.kind not in {"mean", "weighted_mean"}:
+            continue
+        if names is not None and item.name not in names:
+            continue
+        quantity = renderer.symbol("fields", item.source) + "_{i}"
+        scale = "" if item.basis == "actual" else "e_i "
+        if item.kind == "mean":
+            rhs = rf"\frac{{\sum_i {scale}{quantity}}}{{\sum_i e_i}}"
+        else:
+            weight = renderer.symbol("fields", item.weight) + "_{i}"
+            numerator = rf"\sum_i {scale}{weight}\,{quantity}"
+            denominator = rf"\sum_i {scale}{weight}"
+            ratio = rf"\dfrac{{{numerator}}}{{{denominator}}}"
+            if item.zero_weight == "exposure_mean":
+                fallback = (rf"\dfrac{{\sum_i e_i {quantity}}}"
+                            r"{\sum_i e_i}")
+                rhs = (r"\begin{cases}" + ratio + " & " + denominator
+                       + r" > 0 \\ " + fallback + " & " + denominator
+                       + r" = 0\end{cases}")
+            else:
+                rhs = ratio
+        context = (
+            f"Population: {item.population}; basis: {item.basis}. "
+            "i ranges over donor records in this team/cell; e_i is source "
+            f"exposure. Sparse fallback order: {item.fallbacks}."
+        )
+        if item.kind == "weighted_mean":
+            context += f" Zero-weight policy: {item.zero_weight}."
+        equations.append((
+            f"Aggregate factor: {item.name}",
+            renderer.factor(item.name) + " = " + rhs, context,
+        ))
+    return equations
+
+
 def render_formula(expr, *, model=None, notation=None, expand_children=False):
     """Preview a row or aggregate expression without data or attribution.
 
@@ -551,7 +608,11 @@ def render_formula(expr, *, model=None, notation=None, expand_children=False):
             "Structural preview: dimensions, units and amount bases are "
             "unspecified without model context."
         )
-    return _preview(renderer, [("Formula", latex, "")], notes)
+    equations = [("Formula", latex, "")]
+    names = {name for namespace, name in renderer.used
+             if namespace == "factors"}
+    equations.extend(_aggregate_equations(renderer, names))
+    return _preview(renderer, equations, notes)
 
 
 def render_model(model, *, notation=None):
@@ -610,6 +671,7 @@ def render_model(model, *, notation=None):
             context += "Team-axis sums use the selected local team only. "
         context += "Switches: " + "; ".join(switches)
         equations.append((f"Cost: {game.name}", lhs + " = " + rhs, context))
+    equations.extend(_aggregate_equations(renderer))
     spec = getattr(model, "spec", model)
     notes = [
         "Compilation validates declarations, not business correctness or "

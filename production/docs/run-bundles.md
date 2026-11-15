@@ -161,3 +161,28 @@ before constructing or replaying references.
 Schema-one containers remain loadable without attribution. Native v2
 models use scoped driver IDs and generic diagnostic tables; v1 models
 retain their legacy bridge/hierarchy/team-summary table shapes.
+
+
+## Aggregate-factor evidence (engine 0.3.0+)
+
+V2 declarations may include `mean` and `weighted_mean` factors. Model and
+bundle schema versions remain 2; reading these declarations requires engine
+0.3.0 or later. Existing declarations retain their fingerprints and older
+bundles remain readable. Notation settings remain outside model identity.
+
+`diagnostics/aggregate_factors` records each effective cell aggregate:
+period/team/population/factor, coordinates, kind, source and weight field IDs,
+basis, value, observed numerator/denominator, zero-weight fallback totals,
+donor rows/exposure/dimensions, method and source period/team, plus the
+whole-population completion method. Reference-only statistics remain null
+or absent when not observed; they are never inferred from the supplied rate.
+Copied cells retain their donor statistics and identify the source period.
+`diagnostics/state_factors` continues exposing the effective numeric tensors.
+
+`assumptions` additionally includes `zero_weight_exposure_mean` rows with
+factor and coordinates. These are cell-rate assumptions, not evidence that
+an entire population was copied. `canonical_data` includes
+`per_exposure__<factor>` columns for `mean` factors as well as payments.
+Weighted rates are cell aggregates and are not written as row inputs.
+Source snapshot amounts remain unchanged. All new tables round-trip through
+ordinary bundle export/load and can be inspected without internal states.

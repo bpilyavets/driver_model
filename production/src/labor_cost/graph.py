@@ -184,9 +184,10 @@ class Population:
 class FieldSpec:
     """Bind a scoped row input with units and an applicable-value constraint.
 
-    Units include currency, time, exposure and supported ratios. A field
-    may appear repeatedly in formulas but is represented by one atomic aligned
-    input in a game. Population restrictions also govern missing values.
+    Units include currency, time, exposure and supported ratios, including
+    time/exposure and 1/exposure for normalized worked quantities. Fields
+    may appear repeatedly in row expressions; factors declare their aligned
+    or aggregate representation. Population restrictions govern missing values.
     """
 
     name: str
@@ -213,10 +214,15 @@ class Factor:
     """Describe a state object, independently of its attribution player.
 
     Kinds: total, distribution, population_mix, aligned, membership,
-    payment, policy. Scope is team or organization. Distribution axes are
-    ``given + dimensions``; each complete table is an atomic object.
+    payment, policy, mean, weighted_mean. Scope is team or organization.
+    Distribution axes are ``given + dimensions``; each complete table is
+    an atomic object.
     Sparse fallbacks are ordered subsets of the economic cell dimensions.
     An empty fallback sequence means unsupported cells must fail.
+    Mean factors name a source field; actual means divide sums by exposure.
+    Weighted means additionally name a nonnegative weight field. Their basis
+    applies to weights, not rates. Zero weights fail unless zero_weight is
+    explicitly exposure_mean, which uses exposure-weighted source values.
     """
 
     name: str
@@ -230,6 +236,8 @@ class Factor:
     fallbacks: tuple = ()
     members: tuple = ()
     basis: str = "actual"
+    weight: str | None = None
+    zero_weight: str = "error"
 
     def __post_init__(self):
         """Freeze dimension, partition and fallback declarations."""
@@ -303,7 +311,14 @@ class ModelGraph:
 
     def to_dict(self):
         """Return the canonical declarative JSON payload."""
-        return asdict(self)
+        data = asdict(self)
+        for factor in data["factors"]:
+            if factor["weight"] is None:
+                factor.pop("weight")
+            if (factor["kind"] != "weighted_mean"
+                    and factor["zero_weight"] == "error"):
+                factor.pop("zero_weight")
+        return data
 
     @classmethod
     def from_dict(cls, data):

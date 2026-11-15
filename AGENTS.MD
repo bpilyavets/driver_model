@@ -142,6 +142,13 @@ Reject unsupported units, ownership or hierarchy combinations with
 contextual errors. Distinguish source category values, population IDs,
 factor IDs, game IDs and presentation labels in examples.
 
+V2 `mean` and `weighted_mean` factors support an alternative effective-rate
+representation. Preserve paired payroll through workload weighting; do not
+replace it with independent arithmetic averages. Zero-workload rate
+completion must be explicit and auditable, without changing observed hours.
+Preserve the existing invariants for employee-aligned models. Effective
+rates may change when hours shift between unchanged-rate employees.
+
 Membership measures changes in participating employee profiles and their
 weights/conversions. Its scope is the expression inside `aligned_mean`;
 it can include bonuses or temporary payroll. Aligned-input drivers measure

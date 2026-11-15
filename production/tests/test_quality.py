@@ -168,3 +168,44 @@ def _execute_notebook(notebook, tmp_path):
         if cell.cell_type == "code"
         for output in cell.outputs
     )
+
+
+@pytest.mark.parametrize("configured", [None, "exact", "permutation"])
+def test_comparison_notebook_fresh_kernel(tmp_path, configured):
+    """Preview or compare all model variants in an isolated kernel."""
+    from test_aggregates import comparison_frame
+
+    notebook = nbformat.read(ROOT / "examples/model_comparison.ipynb", 4)
+    nbformat.validate(notebook)
+    for cell in notebook.cells:
+        if cell.cell_type == "code":
+            assert cell.execution_count is None and not cell.outputs
+    notebook.cells[1].source += (
+        f"\nexample_directory = {str(ROOT / 'examples')!r}\n"
+    )
+    if configured:
+        rows = comparison_frame()
+        snapshot = DatasetSnapshot("payroll", "v1", rows)
+        rows.to_parquet(tmp_path / "data.parquet", index=True)
+        (tmp_path / "catalog.json").write_text(json.dumps({
+            "models": [], "datasets": [{
+                "id": "payroll", "version": "v1", "path": "data.parquet",
+                "fingerprint": snapshot.fingerprint,
+            }],
+        }))
+        notebook.cells[1].source += (
+            f"\ncatalog_path = {str(tmp_path / 'catalog.json')!r}\n"
+            "dataset_version = 'v1'\nperiod_a = '2026-01'\n"
+            "period_b = '2026-08'\nsource_cost_column = 'actual'\n"
+            "exposure_column = 'e'\n"
+            f"explainer = {configured!r}\nn_permutations = 8\n"
+            f"export_directory = {str(tmp_path / 'runs')!r}\n"
+        )
+    notebook.cells.append(nbformat.v4.new_code_cell(
+        "assert len(models) == 3\n"
+        + ("assert summary.validated.all()\nassert len(reports) == 3"
+           if configured else "assert not results")
+    ))
+    _execute_notebook(notebook, tmp_path)
+    if configured:
+        assert len(list((tmp_path / "runs").glob("*/manifest.json"))) == 3

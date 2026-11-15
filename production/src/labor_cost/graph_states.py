@@ -6,6 +6,7 @@ from itertools import product
 import numpy as np
 import pandas as pd
 
+from .aggregation import aggregate_cell
 from .engine.inputs import month_start
 from .expressions import monomials
 from .graph_cost import Profiles, Tensor, validate_factors
@@ -258,7 +259,8 @@ def _alignment(graph, frame, masks, periods):
 
 
 def _build_factor(
-    factor, rows, combined, axes, context, vectors, identities, diagnostics
+    factor, rows, combined, axes, context, vectors, identities, diagnostics,
+    aggregates,
 ):
     """Build one complete, typed state object from its declared population."""
     dims = factor.given + factor.dimensions
@@ -318,9 +320,19 @@ def _build_factor(
                 )
             output.append(float(values[0]))
             continue
+        previous = len(diagnostics)
         donor = _donor(
             rows, dims, cell, factor.fallbacks, context, diagnostics
         )
+        if factor.kind in {"mean", "weighted_mean"}:
+            donor_dims = (diagnostics[-1]["fallback_dimensions"]
+                          if len(diagnostics) > previous else dims)
+            amount, record = aggregate_cell(
+                factor, donor, context, dict(zip(dims, cell)), donor_dims
+            )
+            output.append(amount)
+            aggregates.append(record)
+            continue
         weights = donor.exposure.to_numpy() / donor.exposure.sum()
         if factor.kind == "payment":
             amounts = row_evaluate(factor.formula, donor)
@@ -370,7 +382,7 @@ def build_states(plan, frame, periods, request):
         working["__population_" + name] = mask
     vectors, identities, alignment = _alignment(graph, working, masks, periods)
     teams = _sorted(working.team)
-    states, fallbacks, assumptions = [], [], []
+    states, fallbacks, assumptions, aggregates = [], [], [], []
     population_names = tuple(
         dict.fromkeys(["all"] + [x.population for x in graph.games])
     )
@@ -399,6 +411,7 @@ def build_states(plan, frame, periods, request):
                     vectors,
                     identities,
                     fallbacks,
+                    aggregates,
                 )
         for team in teams:
             team_rows = rows.loc[rows.team.eq(team)]
@@ -441,6 +454,7 @@ def build_states(plan, frame, periods, request):
                         vectors,
                         identities,
                         fallbacks,
+                        aggregates,
                     )
                 validate_factors(factors, values, graph.fields)
                 team_state["populations"][population] = values
@@ -555,7 +569,16 @@ def build_states(plan, frame, periods, request):
                     raise ValueError(
                         f"Fixed policy differs across periods: {factor.name}"
                     )
+    assumptions.extend(
+        {k: row[k] for k in (
+            "period", "team", "population", "factor", "coordinates",
+            "method", "source_period", "value",
+        )}
+        for row in aggregates
+        if row["method"] == "zero_weight_exposure_mean"
+    )
     return tuple(states), {
+        "aggregate_factors": pd.DataFrame(aggregates),
         "fallbacks": pd.DataFrame(fallbacks),
         "employee_alignment": pd.DataFrame(alignment),
         "assumptions": pd.DataFrame(assumptions),
