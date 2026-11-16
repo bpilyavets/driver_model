@@ -1,6 +1,18 @@
+"""Production payroll declaration using employee-aligned input drivers.
+
+Population predicates use canonical category names; SourceSchema maps the
+raw columns. Replace the team-column placeholder before production analysis.
+Sparse cells fall back to the same team/population in the same period.
+The permanent game has 16 players: select permutation when analyzing it,
+or explicitly group factors if a smaller exact game is desired.
+"""
+
 import labor_cost as lca
 
 source = lca.SourceSchema(
+    employment_type="motivation_type",
+    # Replace this with the actual team column in your production data.
+    team="REPLACE_WITH_PRODUCTION_TEAM_COLUMN",
     dimensions={
         "grade": "grade",
         "reg_coef_distr": "reg_coef",
@@ -10,15 +22,15 @@ source = lca.SourceSchema(
 populations = (
     lca.Population(
         "permanent",
-        {"motivation_type": "permanent"},
+        {"employment_type": "permanent"},
     ),
     lca.Population(
         "gpd",
-        {"motivation_type": "gpd"},
+        {"employment_type": "gpd"},
     ),
     lca.Population(
         "pkc",
-        {"motivation_type": "pkc"},
+        {"employment_type": "pkc"},
     ),
 )
 
@@ -106,7 +118,7 @@ fields = (
     lca.FieldSpec(
         "gpd_adj_coeff", "gpd_adj_coeff",
         population="gpd",
-        units="currency/time", constraint="nonnegative",
+        units="dimensionless", constraint="nonnegative",
     ),
     lca.FieldSpec(
         "pkc_pay", "pkc_pay",
@@ -139,7 +151,7 @@ factors = lca.outer_factors() + (
         population="permanent",
         dimensions=("grade",),
         given=("reg_coef_distr",),
-        fallbacks=(()),
+        fallbacks=((),),
     ),
 
     # Which permanent employees contribute within each cell.
@@ -148,7 +160,7 @@ factors = lca.outer_factors() + (
         "membership",
         population="permanent",
         dimensions=("grade", "reg_coef_distr"),
-        fallbacks=(()),
+        fallbacks=((),),
     ),
 
     # Preserve permanent rate/hour pairing by employee.
@@ -158,19 +170,19 @@ factors = lca.outer_factors() + (
         population="permanent",
         source="permanent_rate",
     ),
-    # чтобы можно было умножать на ргекэффы, а не токльо использовать их как разрез
+    # Региональный коэффициент как множитель, а не только разрез.
     lca.Factor(
         "regional_policy",
         "policy",
         population="permanent",
-        dimensions=("reg_coef_distr"),
+        dimensions=("reg_coef_distr",),
         source="reg_coefficient"
     ),
     lca.Factor(
         "vyrabotka",
         "aligned",
         population="permanent",
-        source="permanent_hours",
+        source="vyrabotka",
     ),
 
     lca.Factor(
@@ -179,7 +191,7 @@ factors = lca.outer_factors() + (
         population="permanent",
         dimensions=("reg_coef_distr", "grade"),
         formula=lca.field("sick_leave"),
-        fallbacks=(()),
+        fallbacks=((),),
     ),
 
     lca.Factor(
@@ -188,7 +200,7 @@ factors = lca.outer_factors() + (
         population="permanent",
         dimensions=("reg_coef_distr", "grade"),
         formula=lca.field("vacation_pay"),
-        fallbacks=(()),
+        fallbacks=((),),
     ),
 
     lca.Factor(
@@ -197,7 +209,7 @@ factors = lca.outer_factors() + (
         population="permanent",
         dimensions=("reg_coef_distr", "grade"),
         formula=lca.field("holiday_pay"),
-        fallbacks=(()),
+        fallbacks=((),),
     ),
 
     lca.Factor(
@@ -206,7 +218,7 @@ factors = lca.outer_factors() + (
         population="permanent",
         dimensions=("reg_coef_distr", "grade"),
         formula=lca.field("night_pay"),
-        fallbacks=(()),
+        fallbacks=((),),
     ),
 
     lca.Factor(
@@ -215,7 +227,7 @@ factors = lca.outer_factors() + (
         population="permanent",
         dimensions=("reg_coef_distr", "grade"),
         formula=lca.field("meal_compensation"),
-        fallbacks=(()),
+        fallbacks=((),),
     ),
 
     lca.Factor(
@@ -224,7 +236,7 @@ factors = lca.outer_factors() + (
         population="permanent",
         dimensions=("reg_coef_distr", "grade"),
         formula=lca.field("yearly_bonus"),
-        fallbacks=(()),
+        fallbacks=((),),
     ),
 
     lca.Factor(
@@ -233,7 +245,7 @@ factors = lca.outer_factors() + (
         population="permanent",
         dimensions=("reg_coef_distr", "grade"),
         formula=lca.field("bonus_quarterly"),
-        fallbacks=(()),
+        fallbacks=((),),
     ),
 
     lca.Factor(
@@ -242,7 +254,7 @@ factors = lca.outer_factors() + (
         population="permanent",
         dimensions=("reg_coef_distr", "grade"),
         formula=lca.field("bonus_overtime"),
-        fallbacks=(()),
+        fallbacks=((),),
     ),
     lca.Factor(
         "bonus_sharing",
@@ -250,7 +262,7 @@ factors = lca.outer_factors() + (
         population="permanent",
         dimensions=("reg_coef_distr", "grade"),
         formula=lca.field("bonus_sharing"),
-        fallbacks=(()),
+        fallbacks=((),),
     ),
 
     lca.Factor(
@@ -259,7 +271,7 @@ factors = lca.outer_factors() + (
         population="permanent",
         dimensions=("reg_coef_distr", "grade"),
         formula=lca.field("bonus_kpi"),
-        fallbacks=(()),
+        fallbacks=((),),
     ),
 
     lca.Factor(
@@ -268,7 +280,7 @@ factors = lca.outer_factors() + (
         population="permanent",
         dimensions=("reg_coef_distr", "grade"),
         formula=lca.field("other_pay"),
-        fallbacks=(()),
+        fallbacks=((),),
     ),
 
     # Temporary workers have no categorical breakdown.
@@ -305,10 +317,9 @@ factors = lca.outer_factors() + (
     ),
     lca.Factor(
         "pkc_pay",
-        "payment",
+        "aligned",
         population="pkc",
-        formula=lca.field("pkc_pay"),
-        fallbacks=(()),
+        source="pkc_pay",
     ),
 )
 
@@ -328,7 +339,8 @@ row_costs = (
     ),
     lca.RowCost(
         "gpd",
-        lca.field("gpd_rate") * lca.field("gpd_minutes") * lca.field("gpd_adj_coeff"),
+        lca.field("gpd_rate") * lca.field("gpd_minutes")
+        * lca.field("gpd_adj_coeff"),
     ),
     lca.RowCost(
         "pkc",
@@ -347,17 +359,19 @@ permanent_cell_cost = (
         + lca.value("meal_compensation") + lca.value("yearly_bonus")
         + lca.value("bonus_quarterly") + lca.value("bonus_kpi")
     )
-    + lca.value("bonus_sharing")+ lca.value("bonus_overtime")
+    + lca.value("bonus_sharing") + lca.value("bonus_overtime")
     + lca.value("other_pay")
 )
 
 permanent_unit_cost = lca.sum_over(
-    lca.value("region_mix") * lca.value("grade_within_region_mix") * permanent_cell_cost,
+    lca.value("region_mix") * lca.value("grade_within_region_mix")
+    * permanent_cell_cost,
     "reg_coef_distr", "grade",
 )
 
 gpd_unit_cost = lca.aligned_mean(
-    lca.value("gpd_minutes") * lca.value("gpd_adj_coeff") * lca.value("gpd_rate"),
+    lca.value("gpd_minutes") * lca.value("gpd_adj_coeff")
+    * lca.value("gpd_rate"),
     "gpd_members"
 )
 
@@ -376,12 +390,16 @@ permanent_game = lca.Game(
             label="Региональный микс",
         ),
         lca.Switch(
-            "grade_mix_within_region",
+            "grade_within_region_mix",
             label="Микс грейдов внутри региона",
         ),
         lca.Switch(
             "permanent_members",
             label="Микс сотрудников внутри региона и грейда",
+        ),
+        lca.Switch(
+            "permanent_rate",
+            label="Изменение базовой ставки",
         ),
         lca.Switch(
             "vyrabotka",
@@ -474,7 +492,7 @@ pkc_game = lca.Game(
     )
 )
 
-mix = lca.value("team_mix")
+mix = lca.value("motivation_mix")
 
 team_game = lca.Game(
     name="team",
