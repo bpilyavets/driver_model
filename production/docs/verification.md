@@ -290,3 +290,77 @@ These checks establish the new aggregate identities and example workflow,
 not validation of an organization's production data. General reconciliation
 and diagnostic gaps in architecture-gaps.md remain open. No production
 payroll data or executed outputs were added to repository notebooks.
+
+## 2026-11-17 — Production CSV input preparation
+
+Corrected the editable production workflow using the user's confirmed
+source mappings and input-quality policy. Permanent salary now uses
+`base_stavka × vyrabotka_percent` with currency/dimensionless units. The
+confirmed sharing/overtime columns are used without extra regional
+multiplication. Source population values are ТК, ГПД and ПКЦ; the user's
+removal of meal compensation and exact-explainer choice are preserved.
+
+Verification against the supplied `mock_data.csv`:
+
+- 40,440 selected rows; 78 excluded (58 ТК and 20 ГПД); 40,362 retained.
+- All four missing-team rows retained under Unassigned. The file has seven
+  named teams, producing eight analyzed teams including that bucket.
+- Input adaptation, state construction and both standalone endpoints pass.
+- Full exact analysis and report construction complete: **54 validation
+  rows passed**, all eight team summaries/local bridges present. Observed
+  elapsed time was 302.89 seconds for this fixture/run, not a performance
+  guarantee. Report display was disabled during terminal verification.
+- **7 focused input-preparation tests pass**, including visible counts,
+  overlapping exclusion reasons, source immutability, nullable DWH inputs,
+  signed corrections, missing-column/category failures, missing-period
+  protection, and export/load of the full input audit.
+- Ruff, pycodestyle and `git diff --check` pass for this change. The library
+  calculation engine was not changed; the full regression suites were not
+  repeated for this example-level input preparation change.
+
+The input audit retains selected pre-cleaning records, excluded rows and
+reasons, original/replacement team assignments and per-period/category
+counts. These are available in `input_audit` and in result tables prefixed
+`input_quality/`, including exported bundles. The original CSV is unchanged.
+Exposure is allocated after exclusions, and the bridge covers retained
+records. `source_cost_column=None` still means reconciliation against
+reconstructed row payroll, not independent actual-payroll validation.
+
+## 2026-11-17 — Public preparation API and one-percent guard
+
+Moved preparation from the production example into the public
+`prepare_input(model, dataset, request, *, missing_team=None)` API.
+`PreparedInput` carries defensive audit copies into analysis automatically;
+results and bundles preserve input-quality tables and original-snapshot
+provenance. Ordinary snapshots retain strict analysis behavior. Excluding
+more than 1% of selected rows raises `InputPreparationError` before state
+construction/attribution, with the proposed audit available on the exception.
+Exactly 1% is accepted; each excluded row counts once. Missing-team
+replacement remains an explicit policy and does not count as exclusion.
+
+Verification:
+
+- **24 focused tests passed**, covering the threshold boundary, selected
+  denominator, scoped/nullable inputs, signed corrections, immutable source
+  and audit data, unknown mappings, structural conflicts even on defective
+  rows, both compiled declaration versions, joint categories, independent
+  custom models, strict ordinary analysis, preparation-context checks,
+  standalone costing and automatic audit export/load.
+- Full production suite: **364 passed, 1 skipped, 2 failed** (434.12 s).
+  The two failures remain the previously documented user-experiment style
+  violations and saved outputs in `model_authoring.ipynb`. Those files
+  remain unchanged. Four final predicate/grain regression tests were added
+  after full-suite collection and are covered by the 24-test focused run.
+- Root PoC suite: **153 passed** (326.48 s), with the existing noninteractive
+  Matplotlib warning. The PoC notebook remains unchanged.
+- Full exact CSV workflow and report construction: **54 validation checks
+  passed**, eight teams/local bridges, 308.93 s in this run. No chart display
+  was opened. The final preparation guards were also rechecked against the
+  CSV after review: 78 / 40,440 rows excluded (0.193%), 40,362 retained,
+  four team assignments. The CSV was not modified.
+- Ruff, pycodestyle and `git diff --check` pass for the changed Python files.
+
+This input-quality policy does not close the documented general economic
+reconciliation or diagnostic gaps. The example still has no independent
+source-cost column; its bridge describes reconstructed payroll on retained
+records, with default exposure assigned after exclusions.

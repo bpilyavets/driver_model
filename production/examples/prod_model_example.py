@@ -1,18 +1,23 @@
 """Production payroll declaration using employee-aligned input drivers.
 
 Population predicates use canonical category names; SourceSchema maps the
-raw columns. Replace the team-column placeholder before production analysis.
+raw columns. Input preparation reports rejected rows and their reasons.
 Sparse cells fall back to the same team/population in the same period.
-The permanent game has 16 players: select permutation when analyzing it,
-or explicitly group factors if a smaller exact game is desired.
+Missing teams are retained as Unassigned. The permanent game has 15 switches
+and supports exact attribution. Payroll inputs retain their source amounts.
 """
+
+from pathlib import Path
+
+import pandas as pd
 
 import labor_cost as lca
 
 source = lca.SourceSchema(
     employment_type="motivation_type",
-    # Replace this with the actual team column in your production data.
-    team="REPLACE_WITH_PRODUCTION_TEAM_COLUMN",
+    employee="mdm_employee_rk_hash",
+    period="period",
+    team="lvl7_mapped_management_unit_nm",
     dimensions={
         "grade": "grade",
         "reg_coef_distr": "reg_coef",
@@ -22,15 +27,15 @@ source = lca.SourceSchema(
 populations = (
     lca.Population(
         "permanent",
-        {"employment_type": "permanent"},
+        {"employment_type": "ТК"},
     ),
     lca.Population(
         "gpd",
-        {"employment_type": "gpd"},
+        {"employment_type": "ГПД"},
     ),
     lca.Population(
         "pkc",
-        {"employment_type": "pkc"},
+        {"employment_type": "ПКЦ"},
     ),
 )
 
@@ -38,12 +43,12 @@ fields = (
     lca.FieldSpec(
         "permanent_rate", "base_stavka",
         population="permanent",
-        units="currency/time", constraint="nonnegative",
+        units="currency", constraint="nonnegative",
     ),
     lca.FieldSpec(
-        "vyrabotka", "vyrabotka_act",
+        "vyrabotka", "vyrabotka_percent",
         population="permanent",
-        units="time", constraint="nonnegative",
+        units="dimensionless", constraint="nonnegative",
     ),
     lca.FieldSpec(
         "reg_coefficient", "reg_coef",
@@ -71,11 +76,6 @@ fields = (
         units="currency", constraint="signed"
     ),
     lca.FieldSpec(
-        "meal_compensation", "sum_pay_compens_meal_reg_base",
-        population="permanent",
-        units="currency", constraint="signed"
-    ),
-    lca.FieldSpec(
         "other_pay", "sum_pay_compacted",
         population="permanent",
         units="currency", constraint="signed"
@@ -91,7 +91,7 @@ fields = (
         units="currency", constraint="signed",
     ),
     lca.FieldSpec(
-        "bonus_sharing", "bonus_sharing_comp",
+        "bonus_sharing", "bonus_sharing_comp_reg_base",
         population="permanent",
         units="currency", constraint="signed",
     ),
@@ -101,7 +101,7 @@ fields = (
         units="currency", constraint="signed",
     ),
     lca.FieldSpec(
-        "bonus_overtime", "bonus_overtime_comp_reg_base",
+        "bonus_overtime", "bonus_overtime_comp",
         population="permanent",
         units="currency", constraint="signed",
     ),
@@ -222,15 +222,6 @@ factors = lca.outer_factors() + (
     ),
 
     lca.Factor(
-        "meal_compensation",
-        "payment",
-        population="permanent",
-        dimensions=("reg_coef_distr", "grade"),
-        formula=lca.field("meal_compensation"),
-        fallbacks=((),),
-    ),
-
-    lca.Factor(
         "yearly_bonus",
         "payment",
         population="permanent",
@@ -331,7 +322,7 @@ row_costs = (
             lca.field("permanent_rate") * lca.field("vyrabotka")
             + lca.field("sick_leave") + lca.field("vacation_pay")
             + lca.field("holiday_pay") + lca.field("night_pay")
-            + lca.field("meal_compensation") + lca.field("yearly_bonus")
+            + lca.field("yearly_bonus")
             + lca.field("bonus_quarterly") + lca.field("bonus_kpi")
         )
         + lca.field("bonus_sharing") + lca.field("bonus_overtime")
@@ -356,7 +347,7 @@ permanent_cell_cost = (
         )
         + lca.value("sick_leave") + lca.value("vacation_pay")
         + lca.value("holiday_pay") + lca.value("night_pay")
-        + lca.value("meal_compensation") + lca.value("yearly_bonus")
+        + lca.value("yearly_bonus")
         + lca.value("bonus_quarterly") + lca.value("bonus_kpi")
     )
     + lca.value("bonus_sharing") + lca.value("bonus_overtime")
@@ -420,10 +411,6 @@ permanent_game = lca.Game(
         lca.Switch(
             "night_pay",
             label="Ночные",
-        ),
-        lca.Switch(
-            "meal_compensation",
-            label="Компенсация питания",
         ),
         lca.Switch(
             "yearly_bonus",
@@ -549,4 +536,45 @@ model = lca.ModelSpec(
     ),
 )
 
+
 compiled = lca.compile_model(model)
+
+period_a = "2026-09-01"
+period_b = "2026-10-01"
+explainer = "exact"
+renderer = "plotly_mimetype"
+currency_label = "₽"
+selected_teams = []  # Add team names to display their separate local bridges.
+
+# In production, supply the DWH DataFrame here instead of reading the CSV.
+csv_path = Path("mock_data.csv")
+if not csv_path.is_file():
+    csv_path = Path(__file__).resolve().parents[2] / "mock_data.csv"
+raw_cost_df = pd.read_csv(csv_path, parse_dates=[source.period])
+
+snapshot = lca.DatasetSnapshot(
+    dataset_id="simple-payroll-data",
+    version="1",
+    frame=raw_cost_df,
+)
+request = lca.AnalysisRequest(
+    period_a=period_a,
+    period_b=period_b,
+    source_cost_column=None,
+    explainer=explainer,
+)
+snapshot = lca.prepare_input(
+    compiled, snapshot, request, missing_team="Unassigned",
+)
+input_audit = snapshot.audit
+print("Analysis uses reconstructed row payroll, not an independent source "
+      "payroll total. Input preparation details remain in input_audit.")
+result = lca.analyze(compiled, snapshot, request)
+assert result.table("validation")["passed"].all()
+
+charts = lca.report(
+    result,
+    teams=selected_teams,
+    currency_label=currency_label,
+    renderer=renderer,
+)

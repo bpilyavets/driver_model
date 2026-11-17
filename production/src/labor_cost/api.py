@@ -10,6 +10,7 @@ from .engine.costing import cost as engine_cost
 from .engine.registry import DRIVERS
 from .engine.workflow import analyze_labor_cost as analyze_labor_cost
 from .models import labor_cost_model
+from .preparation import PreparedInput
 
 
 def analyze(model, dataset, request):
@@ -22,6 +23,8 @@ def analyze(model, dataset, request):
     dataset : DatasetSnapshot
         Predefined source rows. The selected-period snapshot is included
         with the result; source data are never changed or filtered by team.
+        PreparedInput also carries its input-quality audit into the result.
+        Ordinary snapshots remain strict: analysis never drops rows.
     request : AnalysisRequest
         Comparison periods and explicit calculation settings.
 
@@ -44,7 +47,16 @@ def analyze(model, dataset, request):
     )
     from .graph_api import analyze_graph
 
-    return analyze_graph(compiled, dataset, request)
+    if isinstance(dataset, PreparedInput):
+        dataset._validate_context(compiled, request)
+    result = analyze_graph(compiled, dataset, request)
+    if isinstance(dataset, PreparedInput):
+        result.tables.update({
+            "input_quality/" + name: table
+            for name, table in dataset.audit.items()
+        })
+        result.manifest["input_preparation"] = dataset.preparation
+    return result
 
 
 def cost(state, model=None):
@@ -135,6 +147,8 @@ def build_state(
         source_cost_column=source_cost_column,
         exposure_column=exposure_column,
     )
+    if isinstance(dataset, PreparedInput):
+        dataset._validate_context(compiled, request, standalone=True)
     canonical, _ = adapt_graph(graph, rows, request)
     states, _ = build_states(compiled.plan, canonical, (month, month), request)
     state = states[0]

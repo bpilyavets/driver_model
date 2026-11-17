@@ -979,3 +979,80 @@ For monthly salaries, use salary and worked fraction fields instead, with
 `currency` and `dimensionless` units and corresponding labels. Already
 normalized quantities use `basis="per_exposure"` and `time/exposure` or
 `1/exposure` units. See the full [aggregation contract](../docs/model-authoring.md#effective-rate-and-worked-time-engine-030).
+
+## 14. Prepare the production CSV or DWH input explicitly
+
+[prod_model_example.py](prod_model_example.py) uses the public library
+function `lca.prepare_input`. Supply the original CSV or DWH DataFrame as a
+snapshot, then explicitly prepare it for the model and comparison request:
+
+```python
+raw_snapshot = lca.DatasetSnapshot("payroll", "1", raw_cost_df)
+request = lca.AnalysisRequest(period_a, period_b, explainer="exact")
+prepared = lca.prepare_input(
+    model, raw_snapshot, request, missing_team="Unassigned",
+)
+input_audit = prepared.audit
+result = lca.analyze(model, prepared, request)
+```
+
+`PreparedInput` is a `DatasetSnapshot` containing retained rows, defensive
+copies of audit tables, and preparation metadata. Pass it directly to
+`analyze`; the library automatically attaches `input_quality/...` tables and
+`manifest["input_preparation"]`, including the original snapshot fingerprint.
+These survive run export/load. Ordinary `analyze` calls remain strict and
+never automatically exclude records. Preparation needs no attribution run.
+
+The preparation policy is:
+
+- Map null/blank teams to the explicitly supplied `missing_team` label.
+  Without that argument, invalid teams count as defective rows.
+- Exclude invalid applicable fields, identifiers and required dimensions.
+  Preserve valid signed corrections; ignore inapplicable field values.
+  Also validate explicitly selected exposure and source-cost inputs.
+- Always print input/excluded/retained counts by period and employment type,
+  reason counts and the overall exclusion percentage, without employee IDs
+  or payroll amounts. Multiple reasons count as one excluded row.
+- **Stop before analysis if more than 1% of selected rows would be dropped.**
+  Exactly 1% is allowed. The denominator is all rows in the two comparison
+  months, pooled across teams and populations, before exclusions. Outside
+  months and team replacements do not count as drops. The limit is fixed.
+- Fail on schema errors, invalid periods, unknown population mappings,
+  duplicate keys and conflicting team assignments; do not guess repairs.
+
+If the limit is exceeded, inspect the exception's audit without proceeding:
+
+```python
+try:
+    prepared = lca.prepare_input(
+        model, raw_snapshot, request, missing_team="Unassigned",
+    )
+except lca.InputPreparationError as exc:
+    input_audit = exc.audit
+    display(input_audit["summary"], input_audit["reasons"])
+    raise
+```
+
+`input_audit` contains `summary`, `reasons`, `excluded_rows`,
+`team_assignments`, and the selected original `source_snapshot`. Excluded
+rows retain source row positions and all reasons. Team assignments retain
+original/replacement values, including assignments on subsequently excluded
+rows. Inspect those tables deliberately when individual records are needed.
+The original input is unchanged. Changing model, comparison months, exposure
+or source-cost settings requires preparing the original snapshot again;
+estimator and presentation settings can change without re-preparation.
+
+The production example maps `ТК`, `ГПД`, `ПКЦ`; permanent base pay uses
+`base_stavka × vyrabotka_percent`. Sharing and overtime use the confirmed
+source columns directly, without additional regional multiplication.
+
+Analysis covers the retained workforce only. Default exposure is allocated
+**after** exclusions; removing one employment-type record can change the
+remaining exposure allocation for that employee/month. The input audit is
+part of the interpretation of the resulting bridge.
+
+The example currently sets `source_cost_column=None`: validation reconciles
+the aggregate model to reconstructed row payroll. It does not establish
+agreement with an independent actual-payroll column. Supply an appropriate
+independent source total when available; no omitted payment is silently
+added as a residual.

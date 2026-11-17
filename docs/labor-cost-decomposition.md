@@ -50,6 +50,19 @@ and declare their own employment populations, categorical dimensions,
 applicable fields, units and value constraints. Grade, region and the
 original payroll columns are not mandatory for every model.
 
+Optional library input preparation is an explicit preprocessing policy,
+separate from economic completion. `prepare_input(model, dataset, request)`
+may exclude invalid applicable source rows, reporting counts and every
+reason, but must stop if more than 1% of rows across the selected comparison
+months would be dropped. Exactly 1% is allowed; multiple reasons count once
+per row. Team replacements require an explicit label and are audited, not
+counted as exclusions. Raw selected rows, exclusions, policy and original
+snapshot identity accompany successful analyses and exported runs; a limit
+failure retains the audit on its exception. Ordinary analysis remains
+strict. Results describe the retained workforce only, with default exposure
+assigned after exclusions. This does not complete missing economics or
+establish independent payroll reconciliation.
+
 The analyst declares four separate layers:
 
 1. Scoped actual-row formulas and constraints (`RowCost`, `FieldSpec`).

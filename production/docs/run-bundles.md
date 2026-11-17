@@ -19,12 +19,23 @@ executable objects.
   column names, dtypes and object-column encoding.
 - Interpretation of source, normalized and attribution values.
 
-The stored source snapshot contains every team's original rows in the two
-selected periods. It is distinct from `canonical_data`: payment matrices
+The stored source snapshot contains every team's supplied analysis rows
+in the two selected periods. It is distinct from `canonical_data`: payment matrices
 use per-exposure economics while observed salary/time retain their units.
 The canonical frame retains observed input columns. Named
 `per_exposure__<factor>` columns expose normalized row amounts; aggregated
 values are in `diagnostics/state_factors`. Source rows remain unchanged.
+
+When analysis receives `PreparedInput` from `prepare_input`,
+`source_snapshot` contains retained rows with explicit team replacements.
+The additional `input_quality/source_snapshot` preserves selected original
+rows before preparation; `input_quality/excluded_rows`, `reasons`, `summary`
+and `team_assignments` preserve exclusion and assignment evidence.
+`manifest["input_preparation"]` records the raw snapshot fingerprint,
+model/period/input settings, row counts, exclusion fraction, fixed 1% limit,
+team policy and exposure-after-exclusion assumption. The ordinary dataset
+fingerprint describes the retained snapshot. Existing schema-two bundles
+without preparation metadata remain unchanged and readable.
 
 ## Tables
 

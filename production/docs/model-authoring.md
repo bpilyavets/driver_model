@@ -498,3 +498,21 @@ including regional policy and conditional grade composition. It changes
 only permanent base pay; adapt other rate × time components explicitly.
 Models retain separate fingerprints and run bundles. Driver tables remain
 separate because their definitions differ; absence is not zero impact.
+
+## Explicit input preparation
+
+`prepare_input(model, dataset, request, *, missing_team=None)` accepts a
+specification or compiled v1/v2 model and a raw `DatasetSnapshot`. It applies
+declared input constraints before state construction and returns
+`PreparedInput`, a snapshot with audit evidence. Ordinary analysis remains
+strict; this preprocessing is an explicit choice.
+
+Preparation always prints counts/reasons and raises `InputPreparationError`
+if more than 1% of rows in the two selected months would be excluded. Its
+`.audit` remains available on failure; successful snapshots carry the same
+evidence automatically into analysis and run bundles. Exactly 1% is allowed,
+multiple defects count once per row, and team replacements are not drops.
+Declare `missing_team="Unassigned"` to retain unknown teams under that label.
+Input preparation changes the analyzed workforce; default exposure is
+assigned after exclusions. See the [production workflow](../examples/GUIDE.MD#14-prepare-the-production-csv-or-dwh-input-explicitly)
+for code, policies and exception handling.

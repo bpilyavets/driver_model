@@ -29,6 +29,11 @@ from .graph import (
 )
 from .graph_templates import local_game, organization_game, outer_factors
 from .models import labor_cost_model
+from .preparation import (
+    InputPreparationError,
+    PreparedInput,
+    prepare_input,
+)
 from .presentation import Notation, render_formula, render_model
 from .reporting import (
     NotebookReport,
@@ -67,6 +72,9 @@ __all__ = [
     "DistributionSpec",
     "Expr",
     "InputSpec",
+    "InputPreparationError",
+    "PreparedInput",
+    "prepare_input",
     "ModelSpec",
     "Notation",
     "NotebookReport",
