@@ -38,7 +38,9 @@ from .presentation import Notation, render_formula, render_model
 from .reporting import (
     NotebookReport,
     plot_driver_by_team,
+    plot_organization_impacts,
     plot_organization_waterfall,
+    plot_team_impacts,
     plot_team_waterfall,
     report,
 )
@@ -91,7 +93,9 @@ __all__ = [
     "load_run",
     "publish_model",
     "plot_driver_by_team",
+    "plot_organization_impacts",
     "plot_organization_waterfall",
+    "plot_team_impacts",
     "plot_team_waterfall",
     "report",
     "render_formula",

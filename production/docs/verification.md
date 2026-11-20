@@ -364,3 +364,57 @@ This input-quality policy does not close the documented general economic
 reconciliation or diagnostic gaps. The example still has no independent
 source-cost column; its bridge describes reconstructed payroll on retained
 records, with default exposure assigned after exclusions.
+
+## 2026-11-20 — Cost-impact views and condensed waterfalls
+
+The default report now separates Period A, Period B and net-change
+indicators from a zero-centered axis of ranked horizontal driver bars.
+Existing waterfalls remain available through `chart="waterfall"` and the
+standalone waterfall functions. `top_n` retains the largest absolute impacts
+and collects all remaining signed effects into Other, with complete group
+membership available in chart metadata and copied chart-data tables.
+Organization and local allocations remain separate. Source results,
+calculation logic, fingerprints and bundle schemas are unchanged.
+
+All charts now use red for positive cost impacts and green for negative
+impacts. Waterfall hover values come from stored driver impacts, not the
+cumulative plotted coordinate. Other tooltips include grouped-driver count,
+positive total and negative total, including when the net effect is zero.
+
+Verification:
+
+- Initial reporting suite: **53 passed**. After browser-driven formatting
+  and layout fixes, the reporting suite passed **54 tests** (28.13 s).
+  The final 80-driver layout case and relevant default/tooltip/fresh-kernel
+  checks then passed **4 tests** (51 deselected, 2.80 s). The reporting
+  module now contains 55 collected cases; the last additions were made
+  after collection of the full production run.
+- Full production suite: **385 passed, 1 skipped, 2 failed** (412.54 s).
+  Failures remain `test_style_and_docstrings` (the unchanged experiment's
+  E501 at line 194 and W292 at line 418) and
+  `test_authoring_notebook_fresh_kernel` (pre-existing saved outputs).
+  The experiment, authoring notebook and PoC notebook were not modified.
+- Coverage includes signed and zero endpoints, zero-net Other groups,
+  stable ties, duplicate labels and Other-name collisions, scoped local
+  results, precision, invalid limits, source immutability, old bundles,
+  offline exports, optional import isolation and no attribution calls.
+- Fresh-kernel reporting verifies default impact and condensed waterfall
+  MIME output. Maintained production-client and comparison-notebook
+  integrations are covered by the production suite. Existing saved outputs
+  and execution counts in every edited notebook were explicitly compared
+  with HEAD and preserved; new showcase cells are unexecuted.
+- Visually inspected synthetic charts in local Chromium at 1200- and
+  900-pixel widths and inside a freshly executed JupyterLab notebook.
+  Billion-unit endpoints remain separate from 5–100-unit impacts. Browser
+  hover inspection confirmed `+100.000000` for a driver, a billion-unit
+  period total for the endpoint, and zero/net plus positive/negative
+  components for Other. This caught and resolved Plotly's rejection of
+  combined signed/grouped number formatting and narrow-width indicator
+  overlap. The temporary notebook and servers used no production data;
+  both servers were shut down afterward.
+- Changed Python files pass Ruff and pycodestyle. All three edited notebooks
+  pass notebook-aware Ruff checks. `git diff --check` passes.
+
+No attribution or economic-validation requirements were changed. The root
+PoC suite was not rerun for this presentation-only change; its notebook and
+calculation path remain untouched. Existing architecture gaps remain open.

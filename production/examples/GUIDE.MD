@@ -840,9 +840,9 @@ charts = report(result, teams=["Operations"], show=False)
 charts.show(renderer="plotly_mimetype")
 ```
 
-This displays the full organizational driver waterfall and table, a team
+This displays the full organizational driver chart and table, a team
 summary, recorded validation/assumption/estimator summaries, and a separate
-**local** Operations waterfall. The organizational change remains +407 for
+**local** Operations chart. The organizational change remains +407 for
 this fixture. Selecting a team never changes the calculation population.
 
 Use an existing driver ID to compare organizational contributions by team:
@@ -877,6 +877,25 @@ figure.update_layout(title="Our labor-cost change")
 Reporting also works after `load_run`, without internal states or another
 analysis call. See the [reporting reference](../docs/reporting.md) for
 standalone plotting functions, supported schemas and renderer setup.
+
+The default report shows Period A, Period B and net change above ranked
+horizontal driver bars, on an axis independent of period totals. Positive
+cost impacts are red; negative impacts are green. Tooltips show the selected
+driver impact.
+
+```python
+# Reuse the same result; no attribution is rerun.
+full = report(result, chart="waterfall", show=False)
+compact = report(result, chart="waterfall", top_n=5, show=False)
+compact.show(renderer="plotly_mimetype")
+other_members = compact.tables["chart_data/organization"]
+```
+
+`top_n=5` keeps the five largest absolute impacts and sums every remaining
+driver into Other. Its tooltip exposes positive and negative offsets; the
+`members` column retains all grouped IDs, labels and amounts. The complete
+`driver_bridge` remains unchanged. `top_n` also works with the default
+impact view and with local charts, using each scope's own contributions.
 
 ## 12. Publish only after the declaration behaves as intended
 

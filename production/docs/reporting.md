@@ -49,17 +49,18 @@ a `NotebookReport`; `show=False` builds it without display. Reuse it with
 The object has a compact text representation, so returning it as the last
 cell expression does not redisplay all its charts.
 
-The report contains a full organizational waterfall and driver table,
+The report contains organizational totals above ranked driver bars and a
+complete driver table,
 team summary, compact recorded validation/assumption/estimator summaries,
-and local waterfalls for the selected teams. Its header identifies the
+and local impact charts for the selected teams. Its header identifies the
 run, periods, model/dataset versions, exposure assumption and source-cost
 basis. Actual estimator methods come from `coalition_audit`, rather than
 assuming every game uses the requested estimator. The unabridged audit
 table retains effective seeds, counts and timings for inspection.
 
-None or an empty `teams` sequence adds no local waterfalls and leaves
+None or an empty `teams` sequence adds no local charts and leaves
 the team summary and optional driver breakdown unrestricted. A nonempty
-sequence restricts those team views. The organizational waterfall always
+sequence restricts those team views. The organizational chart always
 explains the full organization; a selected subtotal is never presented as
 a newly calculated selected-population bridge.
 
@@ -88,15 +89,17 @@ Standalone functions return Plotly `Figure` objects without displaying:
 
 ```python
 from labor_cost import (
+    plot_organization_impacts, plot_team_impacts,
     plot_organization_waterfall, plot_team_waterfall, plot_driver_by_team,
 )
 
-organization = plot_organization_waterfall(result)
-local = plot_team_waterfall(result, "Operations")
+organization = plot_organization_impacts(result)
+compact = plot_organization_waterfall(result, top_n=5)
+local = plot_team_impacts(result, "Operations")
 comparison = plot_driver_by_team(result, driver_id, teams=["Operations"])
 ```
 
-All three accept `currency_label`. A report's `figures` dictionary uses
+All figure functions accept `currency_label`. A report's `figures` dictionary uses
 keys `organization`, `local/<team>` and optionally `driver_by_team`.
 Its `tables` dictionary contains `driver_bridge`, normalized `team_summary`,
 `local/<team>` and optionally `driver_by_team`, plus `validation`,
@@ -104,14 +107,51 @@ Its `tables` dictionary contains `driver_bridge`, normalized `team_summary`,
 `assumption_summary`, `estimator_summary` counterparts. Mutating these
 tables or report metadata does not mutate the source result.
 
-Waterfalls use period-A absolute cost, existing relative leaf effects and
-period-B absolute cost. No parents, balancing bars or omitted small effects
-are introduced. Existing order and active zero effects are retained. Colors
-distinguish increases (orange), decreases (blue) and endpoints (slate),
-without assigning favorable/unfavorable meanings. Signed negative endpoints
-and zero net changes are supported. Figure values retain numerical precision;
-display labels show two decimals, hover amounts six. Drivers with duplicate
-labels are disambiguated by ID. No net-driver percentages are calculated.
+The default `chart="impacts"` places Period A, Period B and net change above
+horizontal driver bars. Bars are ranked by absolute impact, with original
+order breaking ties. Their linear axis is centered on zero and independent
+of the period totals, so small drivers remain comparable even when payroll
+is much larger. The indicators and bars form one exportable Plotly figure.
+
+```python
+charts = report(result, chart="impacts", show=False)  # Default; all drivers.
+full = report(result, chart="waterfall", show=False)
+compact = report(result, chart="waterfall", top_n=5, show=False)
+```
+
+`top_n` also works with impact charts and every standalone organization/local
+chart function. It must be a positive integer or None; booleans are rejected.
+With a limit, the largest absolute driver impacts appear in descending order,
+followed by **Other**. Other is the signed sum of the remaining drivers. It
+is retained when those effects cancel to zero and omitted when no drivers
+remain. Its tooltip shows the grouped count, net effect, positive total and
+negative total. Real drivers named Other retain their IDs in their labels.
+Each local chart selects its own largest local impacts; organization charts
+use organizational driver totals. Organization and local allocations remain
+separate; these are presentation groupings, not newly estimated drivers.
+
+Inspect the exact plotted amounts and Other membership using
+`charts.tables["chart_data/organization"]` or
+`charts.tables["chart_data/local/Operations"]`. Their columns include
+`driver`, `label`, `impact`, `kind`, `member_count`, `positive_impact`,
+`negative_impact` and `members` (original driver IDs, labels and amounts).
+Standalone figures retain the same evidence in `figure.layout.meta` under
+`chart_data`. The existing `driver_bridge` and local report tables remain
+complete, uncondensed copies. Editing any of these copies does not change
+the analysis result. View settings and grouping evidence belong to the
+report/figure; analytical run bundles are unchanged.
+
+Full waterfalls keep period-A absolute cost, relative driver effects and
+period-B absolute cost. With `top_n=None`, they preserve declaration order.
+No balancing bars or residual corrections are introduced. Negative endpoints,
+zero impacts and zero net changes are supported in both layouts.
+
+Across all charts, **red means a cost increase**, **green means a cost
+decrease**, and slate denotes period totals or zero effects. Signed numeric
+labels accompany the colors. Waterfall tooltips show the selected driver's
+stored impact explicitly, not the running total; endpoint tooltips show
+period totals. Figure values retain numerical precision; labels show two
+decimals and hover amounts six. No net-driver percentages are calculated.
 
 ## Renderers and HTML export
 

@@ -11,8 +11,8 @@ import pandas as pd
 
 from .contracts import AnalysisResult
 
-_INCREASE = "#D97706"
-_DECREASE = "#2563EB"
+_INCREASE = "#DC2626"
+_DECREASE = "#16A34A"
 _TOTAL = "#475569"
 _EXTRA = "Install labor-cost-model[reporting] in the notebook environment."
 _ENDPOINTS = ["period_A_cost", "period_B_cost"]
@@ -206,33 +206,128 @@ def _periods(data):
     return ["A: " + str(periods[0])[:10], "B: " + str(periods[1])[:10]]
 
 
-def _waterfall(data, frame, title, currency_label):
-    """Create absolute endpoints and relative leaves without rounding data."""
+def _color(amount):
+    """Color cost changes by sign, with neutral totals handled separately."""
+    return _INCREASE if amount > 0 else _DECREASE if amount < 0 else _TOTAL
+
+
+def _top_n(top_n):
+    """Validate a presentation-only limit without coercing booleans."""
+    if top_n is not None and (
+        isinstance(top_n, (bool, np.bool_))
+        or not isinstance(top_n, (int, np.integer)) or top_n <= 0
+    ):
+        raise ValueError("top_n must be a positive integer or None.")
+
+
+def _chart_rows(frame, *, top_n=None, ranked=False):
+    """Copy driver totals and retain complete membership of condensed bars."""
+    _top_n(top_n)
+    rows = []
+    for driver, group in frame.groupby("driver", sort=False):
+        if group.label.nunique() != 1:
+            raise ValueError(f"Driver {driver!r} has inconsistent labels.")
+        amount = float(group.impact.sum())
+        label = group.label.iloc[0]
+        rows.append({
+            "driver": driver, "label": label, "impact": amount,
+            "kind": "driver", "member_count": 1,
+            "positive_impact": max(0., amount),
+            "negative_impact": min(0., amount),
+            "members": [{"driver": driver, "label": label,
+                         "impact": amount}],
+        })
+    if ranked or top_n is not None:
+        rows.sort(key=lambda row: -abs(row["impact"]))
+    if top_n is not None and len(rows) > top_n:
+        rest = rows[top_n:]
+        rows = rows[:top_n] + [{
+            "driver": None, "label": f"Other ({len(rest)} drivers)",
+            "impact": sum(row["impact"] for row in rest), "kind": "other",
+            "member_count": len(rest),
+            "positive_impact": sum(row["positive_impact"] for row in rest),
+            "negative_impact": sum(row["negative_impact"] for row in rest),
+            "members": [member for row in rest for member in row["members"]],
+        }]
+    result = pd.DataFrame(rows)
+    _equal(result.impact.sum(), frame.impact.sum(), "Condensed driver totals")
+    return result
+
+
+def _chart_labels(frame):
+    """Disambiguate duplicate driver labels and synthetic Other groups."""
+    counts = Counter(frame.label)
+    return [
+        f"{row.label} [{row.driver}]"
+        if row.kind == "driver" and (counts[row.label] > 1
+                                     or row.label.startswith("Other"))
+        else row.label for row in frame.itertuples()
+    ]
+
+
+def _hover_data(frame, currency_label):
+    """Bind hover values to stored impacts, never cumulative coordinates."""
+    custom, templates = [], []
+    for label, row in zip(_chart_labels(frame), frame.itertuples()):
+        custom.append([_label(label), _label(row.driver or ""), row.impact,
+                       row.kind, row.member_count, row.positive_impact,
+                       row.negative_impact])
+        template = "%{customdata[0]}<br>"
+        if row.kind == "driver":
+            template += "ID: %{customdata[1]}<br>"
+        template += ("Impact: " + ("+" if row.impact >= 0 else "")
+                     + "%{customdata[2]:,.6f} " + _label(currency_label))
+        if row.kind == "other":
+            template += (
+                "<br>Grouped drivers: %{customdata[4]}"
+                "<br>Positive impacts: +%{customdata[5]:,.6f} "
+                + _label(currency_label)
+                + "<br>Negative impacts: %{customdata[6]:,.6f} "
+                + _label(currency_label)
+            )
+        templates.append(template + "<extra></extra>")
+    return custom, templates
+
+
+def _chart_meta(data, frame, endpoints, chart, top_n):
+    """Retain endpoints and grouped-driver evidence in exported figures."""
+    return {
+        "run_id": data.manifest.get("run_id"), "chart": chart,
+        "top_n": None if top_n is None else int(top_n),
+        "driver_ids": frame.driver.tolist(),
+        "period_A_cost": endpoints[0], "period_B_cost": endpoints[1],
+        "chart_data": frame.to_dict("records"),
+    }
+
+
+def _waterfall(data, frame, title, currency_label, *, top_n=None):
+    """Create absolute endpoints and full or condensed relative impacts."""
     go = _plotly()
     currency_label = _currency(currency_label)
-    counts = Counter(frame.label)
-    labels = [
-        f"{row.label} [{row.driver}]" if counts[row.label] > 1 else row.label
-        for row in frame.itertuples()
-    ]
     endpoints = frame[_ENDPOINTS].iloc[0].to_numpy(dtype=float).tolist()
+    frame = _chart_rows(frame, top_n=top_n)
     periods = _periods(data)
-    labels = [periods[0], *labels, periods[1]]
-    ids = ["", *frame.driver.tolist(), ""]
+    labels = [periods[0], *_chart_labels(frame), periods[1]]
     amounts = [endpoints[0], *frame.impact.tolist(), endpoints[1]]
+    custom, templates = _hover_data(frame, currency_label)
+    endpoint_hover = ("%{customdata[0]}<br>Period total: "
+                      "%{customdata[2]:,.6f} " + _label(currency_label)
+                      + "<extra></extra>")
+    custom = [[_label(periods[0]), "", endpoints[0], "endpoint", 0, 0, 0],
+              *custom,
+              [_label(periods[1]), "", endpoints[1], "endpoint", 0, 0, 0]]
     positions = list(range(len(amounts)))
+    meta = _chart_meta(data, frame, endpoints, "waterfall", top_n)
+    meta["driver_ids"] = ["", *frame.driver.tolist(), ""]
     figure = go.Figure(go.Waterfall(
         x=positions, y=amounts,
         measure=["absolute", *(["relative"] * len(frame)), "absolute"],
-        customdata=[[_label(label), _label(driver)]
-                    for label, driver in zip(labels, ids)],
+        customdata=custom,
         text=[f"{amount:+,.2f}" if 0 < i < len(amounts) - 1
               else f"{amount:,.2f}" for i, amount in enumerate(amounts)],
         textposition="outside", cliponaxis=False,
-        hovertemplate=(
-            "%{customdata[0]}<br>ID: %{customdata[1]}<br>"
-            + _label(currency_label) + ": %{y:,.6f}<extra></extra>"
-        ),
+        hovertemplate=[endpoint_hover, *templates, endpoint_hover],
+        hoverlabel={"bgcolor": [_TOTAL, *map(_color, frame.impact), _TOTAL]},
         increasing={"marker": {"color": _INCREASE}},
         decreasing={"marker": {"color": _DECREASE}},
         totals={"marker": {"color": _TOTAL}},
@@ -247,9 +342,58 @@ def _waterfall(data, frame, title, currency_label):
             "ticktext": ["<br>".join(_label(s) for s in textwrap.wrap(x, 22))
                          for x in labels],
             "tickangle": -30 if len(frame) > 8 else 0,
-        },
-        meta={"run_id": data.manifest.get("run_id"), "driver_ids": ids,
-              "period_A_cost": endpoints[0], "period_B_cost": endpoints[1]},
+        }, meta=meta,
+    )
+    return figure
+
+
+def _impacts(data, frame, title, currency_label, *, top_n=None):
+    """Separate endpoint indicators from the scale of ranked driver bars."""
+    go = _plotly()
+    currency_label = _currency(currency_label)
+    endpoints = frame[_ENDPOINTS].iloc[0].to_numpy(dtype=float).tolist()
+    frame = _chart_rows(frame, top_n=top_n, ranked=True)
+    labels = _chart_labels(frame)
+    wrapped = [textwrap.wrap(label, 34) for label in labels]
+    custom, templates = _hover_data(frame, currency_label)
+    height = max(550, sum(max(40, 19 * len(x)) for x in wrapped) + 260)
+    chart_top = 1 - 140 / (height - 130)
+    bound = max(abs(frame.impact)) * 1.35 or 1.
+    figure = go.Figure(go.Bar(
+        x=frame.impact.tolist(), y=list(range(len(frame))), orientation="h",
+        marker_color=[_color(amount) for amount in frame.impact],
+        customdata=custom, hovertemplate=templates,
+        text=[f"{amount:+,.2f}" for amount in frame.impact],
+        textposition="outside", cliponaxis=False,
+    ))
+    net_change = endpoints[1] - endpoints[0]
+    for i, (label, amount) in enumerate(zip(
+        [*_periods(data), "Net change"], [*endpoints, net_change],
+    )):
+        figure.add_trace(go.Indicator(
+            mode="number", value=amount,
+            title={"text": _label(label) + "<br><span style='font-size:12px'>"
+                   + _label(currency_label) + "</span>",
+                   "font": {"size": 14}},
+            number={"valueformat": ",.2f",
+                    "prefix": "+" if i == 2 and amount >= 0 else "",
+                    "font": {"size": min(26, 230 / len(f"{amount:,.2f}")),
+                             "color": _color(amount) if i == 2 else _TOTAL}},
+            domain={"x": [i / 3, (i + 1) / 3 - .035],
+                    "y": [chart_top + 24 / (height - 130), 1]},
+        ))
+    figure.update_layout(
+        title={"text": _label(title)}, template="plotly_white",
+        showlegend=False, height=height,
+        margin={"l": 260, "r": 110, "t": 80, "b": 50},
+        xaxis={"title": "Driver impact · " + _label(currency_label),
+               "range": [-bound, bound], "zeroline": True,
+               "zerolinecolor": _TOTAL, "zerolinewidth": 1.5},
+        yaxis={"domain": [0, chart_top], "autorange": "reversed",
+               "tickmode": "array", "tickvals": list(range(len(frame))),
+               "ticktext": ["<br>".join(map(_label, lines))
+                            for lines in wrapped], "automargin": True},
+        meta=_chart_meta(data, frame, endpoints, "impacts", top_n),
     )
     return figure
 
@@ -292,7 +436,8 @@ def _driver_plot(data, driver, teams, currency_label):
     return figure, frame
 
 
-def plot_organization_waterfall(result, *, currency_label="Currency"):
+def plot_organization_waterfall(result, *, currency_label="Currency",
+                                top_n=None):
     """Return a full-organization Plotly Figure from stored driver leaves.
 
     Parameters
@@ -302,6 +447,10 @@ def plot_organization_waterfall(result, *, currency_label="Currency"):
     currency_label : str
         Display unit only. No conversion or currency inference occurs.
 
+    top_n : int, optional
+        Largest absolute drivers to retain, with the rest summed as Other.
+        None preserves the complete waterfall in its original order.
+
     Returns
     -------
     plotly.graph_objects.Figure
@@ -309,10 +458,11 @@ def plot_organization_waterfall(result, *, currency_label="Currency"):
     """
     data = _ReportData(result)
     return _waterfall(data, data.drivers, "Organizational driver waterfall",
-                      currency_label)
+                      currency_label, top_n=top_n)
 
 
-def plot_team_waterfall(result, team, *, currency_label="Currency"):
+def plot_team_waterfall(result, team, *, currency_label="Currency",
+                        top_n=None):
     """Return a team's independent local cost waterfall.
 
     Parameters
@@ -324,6 +474,10 @@ def plot_team_waterfall(result, team, *, currency_label="Currency"):
     currency_label : str
         Display unit without conversion.
 
+    top_n : int, optional
+        Largest absolute drivers to retain, with the rest summed as Other.
+        None preserves the complete waterfall in its original order.
+
     Returns
     -------
     plotly.graph_objects.Figure
@@ -331,7 +485,55 @@ def plot_team_waterfall(result, team, *, currency_label="Currency"):
     """
     data = _ReportData(result)
     return _waterfall(data, data.local(team),
-                      f"Local team cost change: {team}", currency_label)
+                      f"Local team cost change: {team}", currency_label,
+                      top_n=top_n)
+
+
+def plot_organization_impacts(result, *, currency_label="Currency",
+                              top_n=None):
+    """Return organization totals above ranked signed driver impacts.
+
+    Parameters
+    ----------
+    result : AnalysisResult
+        Stored organizational contributions, including loaded run bundles.
+    currency_label : str
+        Display unit without conversion.
+    top_n : int, optional
+        Show this many largest absolute impacts plus Other. None shows all.
+
+    Returns
+    -------
+    plotly.graph_objects.Figure
+        One exportable figure; no display or attribution is performed.
+    """
+    data = _ReportData(result)
+    return _impacts(data, data.drivers, "Organizational cost drivers",
+                    currency_label, top_n=top_n)
+
+
+def plot_team_impacts(result, team, *, currency_label="Currency", top_n=None):
+    """Return local team totals above ranked local driver impacts.
+
+    Parameters
+    ----------
+    result : AnalysisResult
+        Stored results with independent local bridges.
+    team : str
+        Existing team name, never a recalculated organizational subset.
+    currency_label : str
+        Display unit without conversion.
+    top_n : int, optional
+        Show this many largest absolute impacts plus Other. None shows all.
+
+    Returns
+    -------
+    plotly.graph_objects.Figure
+        One exportable figure using this team's local allocations.
+    """
+    data = _ReportData(result)
+    return _impacts(data, data.local(team), f"Local cost drivers: {team}",
+                    currency_label, top_n=top_n)
 
 
 def plot_driver_by_team(result, driver, *, teams=None,
@@ -460,7 +662,7 @@ class NotebookReport:
 
 
 def report(result, *, teams=None, driver=None, currency_label="Currency",
-           show=True, renderer=None):
+           show=True, renderer=None, chart="impacts", top_n=None):
     """Build and optionally display a report from existing analysis tables.
 
     Parameters
@@ -468,13 +670,18 @@ def report(result, *, teams=None, driver=None, currency_label="Currency",
     result : AnalysisResult
         An analyzed or restored run; no calculations are executed.
     teams : sequence of str, optional
-        Selected local waterfalls and summary/breakdown teams. None/empty
-        adds no local waterfalls and leaves other team views unrestricted.
-        The organizational waterfall always covers the full organization.
+        Selected local charts and summary/breakdown teams. None/empty
+        adds no local charts and leaves other team views unrestricted.
+        The organizational chart always covers the full organization.
     driver : str, optional
         Add organizational contributions by team for this leaf driver ID.
     currency_label : str
         Presentation unit; defaults to Currency, with no conversion.
+    chart : {"impacts", "waterfall"}
+        Default impacts separates period totals from ranked driver bars.
+    top_n : int, optional
+        Show this many largest absolute drivers plus Other in each scope.
+        None shows all drivers; full waterfalls retain their original order.
     show : bool
         Display immediately by default; False only builds the report.
     renderer : str, optional
@@ -485,10 +692,15 @@ def report(result, *, teams=None, driver=None, currency_label="Currency",
     NotebookReport
         Reusable figures, independent table copies and report metadata.
     """
+    if chart not in ("impacts", "waterfall"):
+        raise ValueError("chart must be 'impacts' or 'waterfall'.")
+    _top_n(top_n)
     data = _ReportData(result)
     selected = data.teams(teams)
-    figures = {"organization": _waterfall(
-        data, data.drivers, "Organizational driver waterfall", currency_label,
+    plot = _impacts if chart == "impacts" else _waterfall
+    figures = {"organization": plot(
+        data, data.drivers, "Organizational cost drivers", currency_label,
+        top_n=top_n,
     )}
     summary = data.summary
     if selected:
@@ -498,10 +710,14 @@ def report(result, *, teams=None, driver=None, currency_label="Currency",
     for team in selected:
         frame = data.local(team)
         key = "local/" + team
-        figures[key] = _waterfall(data, frame,
-                                  f"Local team cost change: {team}",
-                                  currency_label)
+        figures[key] = plot(data, frame,
+                            f"Local team cost change: {team}",
+                            currency_label, top_n=top_n)
         tables[key] = frame
+    for key, figure in figures.items():
+        tables["chart_data/" + key] = pd.DataFrame(
+            deepcopy(figure.layout.meta["chart_data"])
+        )
     if driver is not None:
         figures["driver_by_team"], tables["driver_by_team"] = _driver_plot(
             data, driver, selected, currency_label,
@@ -520,6 +736,7 @@ def report(result, *, teams=None, driver=None, currency_label="Currency",
         "dataset": {k: data.manifest.get("dataset", {}).get(k, "Unavailable")
                     for k in ("id", "version")},
         "currency_label": currency_label, "selected_teams": selected,
+        "chart": chart, "top_n": top_n,
         "source_cost_basis": basis,
         "exposure": data.manifest.get("exposure_config", "Unavailable"),
         "interpretation": "Accounting attribution, not a causal estimate",
