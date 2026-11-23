@@ -195,6 +195,51 @@ def _run(game, a, b, engine, request, team, leaf):
     return result
 
 
+def economic_games(plan, states, request, team, games, audits, cell_rows):
+    """Evaluate the payroll games once per active economic leaf."""
+    graph = plan.graph
+    endpoints = [team_values(plan, s["teams"][team]) for s in states]
+    results = {}
+    for name in plan.order:
+        game = games[name]
+        if all(c[name] is None for c in endpoints):
+            continue
+        factors_a, factors_b = [
+            s["teams"][team]["populations"][game.population]
+            for s in states
+        ]
+        if factors_a is None or factors_b is None:
+            raise ValueError(f"game {name}: economics were not completed")
+        left = _endpoint(game, factors_a, endpoints[0])
+        right = _endpoint(game, factors_b, endpoints[1])
+        leaf = not refs(game.formula, "child")
+        engine = _engine(
+            game,
+            factors_a,
+            endpoints[0],
+            graph.factors,
+            cells=leaf,
+            fields=graph.fields,
+        )
+        game_result = _run(game, left, right, engine, request, team, leaf)
+        results[name] = game_result
+        _record_audits(audits, team, name, game_result)
+        for i, switch_name in enumerate(game_result["impacts"].index):
+            for cell, impact in enumerate(game_result["cell_impacts"][i]):
+                cell_rows.append(
+                    {
+                        "team": team,
+                        "game": name,
+                        "switch": switch_name,
+                        "cell": cell,
+                        "coordinates": engine.cell_coordinates[cell],
+                        "impact_unit": float(impact),
+                        "method": game_result["audit"]["method"],
+                    }
+                )
+    return endpoints, results
+
+
 def decompose_graph(plan, states, request, dataset):
     """Evaluate scoped games once and assemble both reconciled bridge views."""
     validate_explainer_options(
@@ -207,45 +252,9 @@ def decompose_graph(plan, states, request, dataset):
     results, audits, cell_rows = {}, [], []
     endpoint_costs = (graph_cost(plan, a), graph_cost(plan, b))
     for team in teams:
-        endpoints = [team_values(plan, s["teams"][team]) for s in states]
-        results[team] = {}
-        for name in plan.order:
-            game = games[name]
-            if all(c[name] is None for c in endpoints):
-                continue
-            factors_a, factors_b = [
-                s["teams"][team]["populations"][game.population]
-                for s in states
-            ]
-            if factors_a is None or factors_b is None:
-                raise ValueError(f"game {name}: economics were not completed")
-            left = _endpoint(game, factors_a, endpoints[0])
-            right = _endpoint(game, factors_b, endpoints[1])
-            leaf = not refs(game.formula, "child")
-            engine = _engine(
-                game,
-                factors_a,
-                endpoints[0],
-                graph.factors,
-                cells=leaf,
-                fields=graph.fields,
-            )
-            game_result = _run(game, left, right, engine, request, team, leaf)
-            results[team][name] = game_result
-            _record_audits(audits, team, name, game_result)
-            for i, switch_name in enumerate(game_result["impacts"].index):
-                for cell, impact in enumerate(game_result["cell_impacts"][i]):
-                    cell_rows.append(
-                        {
-                            "team": team,
-                            "game": name,
-                            "switch": switch_name,
-                            "cell": cell,
-                            "coordinates": engine.cell_coordinates[cell],
-                            "impact_unit": float(impact),
-                            "method": game_result["audit"]["method"],
-                        }
-                    )
+        endpoints, results[team] = economic_games(
+            plan, states, request, team, games, audits, cell_rows
+        )
         for view, game in (
             ("organization", graph.organization),
             ("local", graph.local),

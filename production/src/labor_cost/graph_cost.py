@@ -256,6 +256,12 @@ def team_values(plan, state, overrides=None):
 def graph_cost(plan, state):
     """Evaluate an organizational state without SHAP or completion."""
     graph = plan.graph
+    if graph.hierarchy:
+        from .hierarchy import cost_term, node_units
+
+        graph.resolve_order(state["hierarchy"])
+        return cost_term(state["nodes"][()]["exposure"], 1.,
+                         node_units(plan, state)[()])
     costs = []
     for team in state["teams"]:
         value = team_values(plan, state["teams"][team])[graph.team_game]

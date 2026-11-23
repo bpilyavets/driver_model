@@ -429,3 +429,52 @@ Verification:
 No attribution or economic-validation requirements were changed. The root
 PoC suite was not rerun for this presentation-only change; its notebook and
 calculation path remain untouched. Existing architecture gaps remain open.
+
+
+## Selectable hierarchy measurements — 2026-11-23
+
+Run from `production/` in the project environment. For example:
+
+```bash
+python benchmarks/organizational_hierarchy.py --order team,line --teams 4 --sparse --explainer permutation --cycles 8
+```
+
+Each row below is one fresh process using independently costed synthetic
+payroll and eight permutation cycles per detailed leaf. Organizational
+and auxiliary games were exact. Four teams provide eight team–line pairs.
+The sparse fixture removes one pair from the second month. Each pair
+active in either month still has one economic game. Peak RSS covers the
+whole process through bundle export. Bundle size includes source rows,
+results and diagnostics. Timing excludes bundle export, includes first-use
+initialization, and was measured on a host also running regression tests.
+
+| Order | Teams | Missing pairs in B | Rows | Permanent games | Input + states (s) | Games + node checks (s) | Analyze (s) | Peak RSS (MiB) | Bundle (KiB) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| team | 2 | 0 | 134 | 2 | 0.14 | 5.25 | 5.44 | 410 | 422 |
+| team | 4 | 0 | 267 | 4 | 0.26 | 5.37 | 5.69 | 412 | 488 |
+| team | 4 | 1 | 250 | 4 | 0.25 | 5.58 | 5.90 | 412 | 496 |
+| line | 2 | 0 | 134 | 2 | 0.18 | 5.20 | 5.43 | 411 | 392 |
+| line | 4 | 0 | 267 | 2 | 0.18 | 5.16 | 5.39 | 410 | 406 |
+| line | 4 | 1 | 250 | 2 | 0.18 | 5.11 | 5.34 | 410 | 407 |
+| team → line | 2 | 0 | 134 | 4 | 0.29 | 5.34 | 5.67 | 412 | 418 |
+| team → line | 4 | 0 | 267 | 8 | 0.60 | 6.23 | 6.91 | 417 | 486 |
+| team → line | 4 | 1 | 250 | 8 | 0.68 | 6.86 | 7.61 | 417 | 484 |
+| line → team | 2 | 0 | 134 | 4 | 0.30 | 5.71 | 6.06 | 412 | 418 |
+| line → team | 4 | 0 | 267 | 8 | 0.60 | 6.09 | 6.77 | 418 | 486 |
+| line → team | 4 | 1 | 250 | 8 | 0.53 | 5.90 | 6.51 | 418 | 485 |
+
+All twelve runs passed their recorded checks. These workloads establish
+game counts and reproduce the measurement procedure. Production latency,
+memory limits at real workforce sizes, and permutation accuracy require
+separate measurements on representative inputs.
+
+The same 134-row, two-team fixture was also measured with the default
+exact estimator. Each permanent leaf exhaustively evaluated 16,384
+coalitions. The four runs passed their recorded checks.
+
+| Order | Permanent games | Input + states (s) | Games + node checks (s) | Analyze (s) | Peak RSS (MiB) | Bundle (KiB) |
+|---|---:|---:|---:|---:|---:|---:|
+| team | 2 | 0.14 | 22.73 | 22.92 | 414 | 422 |
+| line | 2 | 0.17 | 22.85 | 23.06 | 416 | 392 |
+| team → line | 4 | 0.29 | 38.29 | 38.64 | 411 | 419 |
+| line → team | 4 | 0.33 | 38.11 | 38.49 | 410 | 419 |

@@ -33,11 +33,11 @@ UNADJUSTED = (
 )
 
 
-def fixture():
-    """Return four teams, two months and signed independently costed rows."""
+def fixture(teams=4):
+    """Return the requested teams, two months and signed independently costed rows."""
     rows = []
     for month, period in enumerate(("2025-03-01", "2025-04-01")):
-        for team in range(4):
+        for team in range(teams):
             for person in range(30):
                 if month == 1 and team == 3 and person == 29:
                     continue

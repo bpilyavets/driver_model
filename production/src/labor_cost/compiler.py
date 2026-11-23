@@ -33,15 +33,16 @@ class CompiledModel:
         """Return the content identity of the declared model."""
         return self.spec.fingerprint
 
-    def inspect(self):
-        """Describe the formula, representations, atomic players and games."""
+    def inspect(self, *, hierarchy=None):
+        """Describe the formula, effective hierarchy, players and games."""
         if self.spec.graph is not None:
             return {
                 "model_id": self.spec.model_id,
                 "version": self.spec.version,
                 "fingerprint": self.fingerprint,
-                **self.plan.inspect(),
+                **self.plan.inspect(hierarchy=hierarchy),
             }
+        self.plan.graph.resolve_order(hierarchy)
         return {
             "model_id": self.spec.model_id,
             "version": self.spec.version,

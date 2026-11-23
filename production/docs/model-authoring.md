@@ -523,3 +523,35 @@ Declare `missing_team="Unassigned"` to retain unknown teams under that label.
 Input preparation changes the analyzed workforce; default exposure is
 assigned after exclusions. See the [production workflow](../examples/GUIDE.MD#14-prepare-the-production-csv-or-dwh-input-explicitly)
 for code, policies and exception handling.
+
+
+## Organizational hierarchy selection
+
+Enable the built-in template with
+`labor_cost_model(schema_version=2, line_source="business_line")`.
+For a custom graph, set
+`hierarchy=OrganizationalHierarchy("business_line", orders=..., default=...)`
+on `ModelGraph`. The four supported orders are `("team",)`, `("line",)`,
+`("team", "line")` and `("line", "team")`. The default is team alone.
+Use the standard outer factors and organization/local games for this
+extension. Existing team-scoped payroll games become the economics at
+each selected leaf.
+
+Pass the order as `AnalysisRequest(..., hierarchy=order)` or
+`build_state(model, dataset, month, hierarchy=order)`. Only orders that
+use line require its source column. Conflicting line assignments for an
+employee-month fail strict analysis and audited preparation. Preparing a
+snapshot binds it to the effective order. The manifest records that
+choice alongside the model's allowed orders. Inspect the selection before
+running via `compile_model(model).inspect(hierarchy=order)`.
+
+Node paths are tuples of ordered dimension/value pairs, for example
+`(("line", "Retail"), ("team", "Alpha"))`. Missing-leaf references use
+`(period, path)` keys and either population-to-factor mappings or
+`{"node_state": complete_leaf_state}`. A missing parent mix takes
+`{"mix": {child_label: share, ...}}` under the parent path (the root is
+`()`). Supply the full normalized vector over its observed child axis.
+`require_reference` requires explicit values for one-sided missing
+economics and mixes. References are in the selected hierarchy's order.
+
+[Run the worked comparison](../examples/organizational_hierarchy.ipynb).

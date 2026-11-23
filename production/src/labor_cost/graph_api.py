@@ -104,6 +104,15 @@ def _state_tables(plan, states, diagnostic):
                                 "source_team": None
                                 if explicit
                                 else source.get("source_team"),
+                                **(
+                                    {
+                                        "source_line": None
+                                        if explicit
+                                        else source.get("source_line")
+                                    }
+                                    if "line" in state.get("hierarchy", ())
+                                    else {}
+                                ),
                                 "method": "explicit_reference"
                                 if explicit
                                 else source.get("method"),
@@ -175,14 +184,16 @@ def _completion(period, team, population, assumptions):
     for record in assumptions:
         if record["method"] not in {
             "carry_observed", "carry_organization_mix",
-            "explicit_reference", "explicit_team_reference"
+            "explicit_reference", "explicit_team_reference",
+            "explicit_node_reference",
         }:
             continue
         if record["period"] != period or record["team"] != team:
             continue
         if (
             record["population"] == population
-            or record["method"] == "explicit_team_reference"
+            or record["method"] in {"explicit_team_reference",
+                                    "explicit_node_reference"}
         ):
             return {
                 "completion_method": record["method"],
@@ -221,6 +232,7 @@ def analyze_graph(compiled, dataset, request):
     for state in states:
         state["_model_fingerprint"] = compiled.fingerprint
         state["_graph_state"] = True
+    state_seconds = perf_counter() - started
     validation = []
     for period, state in zip(periods, states):
         rows = canonical.loc[canonical.period.eq(period)]
@@ -246,43 +258,53 @@ def analyze_graph(compiled, dataset, request):
                     group.source_cost.sum(),
                 )
             )
-    tables, games = decompose_graph(
-        compiled.plan, states, request, dataset.dataset_id
-    )
-    for row in tables["team_summary"].itertuples(index=False):
-        for period, value in zip(
-            periods, (row.period_A_cost, row.period_B_cost)
-        ):
-            actual = canonical.loc[
-                canonical.period.eq(period) & canonical.team.eq(row.team),
-                "source_cost",
-            ].sum()
-            validation.append(
-                check(f"{period}/{row.team} aggregate/source", value, actual)
-            )
-    validation.append(
-        check(
-            "Organization bridge",
-            tables["bridge"].impact.sum(),
-            graph_cost(compiled.plan, states[1])
-            - graph_cost(compiled.plan, states[0]),
+    if graph.hierarchy:
+        from .hierarchy_attribution import hierarchy_tables
+
+        tables, checks, attribution_seconds = hierarchy_tables(
+            compiled.plan, states, request, dataset.dataset_id, canonical
         )
-    )
-    validation.append(
-        check(
-            "Driver summary",
-            tables["driver_bridge"].impact.sum(),
-            tables["bridge"].impact.sum(),
+        validation.extend(checks)
+    else:
+        tables, games = decompose_graph(
+            compiled.plan, states, request, dataset.dataset_id
         )
-    )
-    for row in tables["team_summary"].itertuples(index=False):
+        for row in tables["team_summary"].itertuples(index=False):
+            for period, value in zip(
+                periods, (row.period_A_cost, row.period_B_cost)
+            ):
+                actual = canonical.loc[
+                    canonical.period.eq(period) & canonical.team.eq(row.team),
+                    "source_cost",
+                ].sum()
+                validation.append(
+                    check(
+                        f"{period}/{row.team} aggregate/source", value, actual
+                    )
+                )
         validation.append(
             check(
-                f"{row.team} local bridge",
-                tables["local_bridges/" + row.team].impact.sum(),
-                row.cost_change,
+                "Organization bridge",
+                tables["bridge"].impact.sum(),
+                graph_cost(compiled.plan, states[1])
+                - graph_cost(compiled.plan, states[0]),
             )
         )
+        validation.append(
+            check(
+                "Driver summary",
+                tables["driver_bridge"].impact.sum(),
+                tables["bridge"].impact.sum(),
+            )
+        )
+        for row in tables["team_summary"].itertuples(index=False):
+            validation.append(
+                check(
+                    f"{row.team} local bridge",
+                    tables["local_bridges/" + row.team].impact.sum(),
+                    row.cost_change,
+                )
+            )
     if compiled.spec.graph is None:
         tables.update(
             _legacy_tables(compiled, states, games, dataset.dataset_id)
@@ -320,6 +342,7 @@ def analyze_graph(compiled, dataset, request):
             "employee_id",
             "employment_type",
             "team",
+            *(["line"] if graph.hierarchy and "line" in canonical else []),
             "employment_type_count",
             "exposure",
             "base_pay_factor",
@@ -332,7 +355,7 @@ def analyze_graph(compiled, dataset, request):
         "created_at": pd.Timestamp.now(tz="UTC").isoformat(),
         "model": compiled.spec.to_dict(),
         "model_fingerprint": compiled.fingerprint,
-        "compiled_graph": compiled.plan.inspect(),
+        "compiled_graph": compiled.plan.inspect(hierarchy=request.hierarchy),
         "dataset": {
             "id": dataset.dataset_id,
             "version": dataset.version,
@@ -365,6 +388,43 @@ def analyze_graph(compiled, dataset, request):
             "attribution": "Accounting attribution, not a causal estimate",
         },
     }
+    if graph.hierarchy:
+        order = states[0]["hierarchy"]
+        paths = {n["key"]: p for p, n in states[0]["nodes"].items()
+                 if "key" in n}
+        for name in (
+            "diagnostics/state_factors",
+            "diagnostics/aligned_inputs",
+            "diagnostics/membership_profiles",
+            "diagnostics/fallbacks",
+            "diagnostics/aggregate_factors",
+            "assumptions",
+        ):
+            table = tables[name]
+            if "team" in table:
+                column = table.team.map(paths)
+                if "node_path" in table:
+                    column = column.where(column.notna(), table.node_path)
+                table["node_path"] = column
+                for dim in ("team", "line"):
+                    table[dim] = column.map(
+                        lambda path: dict(path).get(dim)
+                        if isinstance(path, tuple) else None
+                    )
+        tables["validation"]["payroll_reference_basis"] = (
+            "independent source column" if request.source_cost_column
+            else "reconstructed row payroll"
+        )
+        manifest["bundle_version"] = 3
+        manifest["settings"]["hierarchy"] = list(order)
+        manifest["semantics"].update(
+            organization="Contributions to organizational payroll change",
+            local="Currency contributions to the owner node's observed change",
+        )
+        manifest["timings"] = {
+            "input_and_states_seconds": state_seconds,
+            "attribution_and_node_checks_seconds": attribution_seconds,
+        }
     return AnalysisResult(json_value(manifest), tables, states)
 
 

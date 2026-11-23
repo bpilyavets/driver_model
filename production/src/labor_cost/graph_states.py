@@ -55,6 +55,9 @@ def adapt_graph(graph, frame, request):
         "employment_type": schema.employment_type,
         "team": schema.team,
     }
+    order = graph.resolve_order(request.hierarchy)
+    if "line" in order:
+        mapping["line"] = graph.hierarchy.line_source
     missing = set(mapping.values()) - set(frame.columns)
     if missing:
         raise ValueError(f"Missing source key columns: {sorted(missing)}")
@@ -69,7 +72,7 @@ def adapt_graph(graph, frame, request):
         raise ValueError(
             "Periods must be month starts without time components"
         )
-    for name in ("employee_id", "employment_type", "team"):
+    for name in mapping.keys() - {"period"}:
         if (
             not canonical[name]
             .map(lambda x: isinstance(x, str) and bool(x.strip()))
@@ -81,6 +84,11 @@ def adapt_graph(graph, frame, request):
         raise ValueError("Duplicate employee/employment-type/month rows")
     if (canonical.groupby(keys[:2]).team.nunique() != 1).any():
         raise ValueError("Each employee-month must have exactly one team")
+    if (
+        "line" in order
+        and (canonical.groupby(keys[:2]).line.nunique() > 1).any()
+    ):
+        raise ValueError("Each employee-month must have exactly one line")
     for name, source in schema.dimensions:
         if isinstance(source, (list, tuple)):
             import json
@@ -247,6 +255,8 @@ def _alignment(graph, frame, masks, periods):
                         "value": numeric,
                         "source_period": donor_period,
                         "source_team": donor.team,
+                        **({"source_line": donor.line}
+                           if graph.hierarchy and "line" in frame else {}),
                         "method": "observed"
                         if actual
                         else "same_person_carry",
@@ -381,24 +391,38 @@ def build_states(plan, frame, periods, request):
     for name, mask in masks.items():
         working["__population_" + name] = mask
     vectors, identities, alignment = _alignment(graph, working, masks, periods)
-    teams = _sorted(working.team)
+    branch_column = "team"
+    supplied_refs = request.references
+    if graph.hierarchy:
+        from .hierarchy import attach_nodes, leaf_paths, split_references
+
+        order = graph.resolve_order(request.hierarchy)
+        keys, paths = leaf_paths(working, order)
+        branch_column = object()  # Private grouping key outside source names.
+        working[branch_column] = keys
+        supplied_refs, mixes = split_references(supplied_refs, paths, periods)
+    teams = _sorted(working[branch_column])
     states, fallbacks, assumptions, aggregates = [], [], [], []
     population_names = tuple(
         dict.fromkeys(["all"] + [x.population for x in graph.games])
     )
+    combined_groups = {k: g for k, g in working.groupby(branch_column)}
+    empty = working.iloc[:0]
     for period in periods:
         rows = working.loc[working.period.eq(period)]
+        period_groups = {k: g for k, g in rows.groupby(branch_column)}
+        amounts = rows.groupby(branch_column, sort=False).exposure.sum()
         state = {
             "period": period,
             "teams": {},
             "factors": {},
             "exposure_by_team": {
-                t: float(rows.loc[rows.team.eq(t)].exposure.sum())
+                t: float(amounts.get(t, 0.))
                 for t in teams
             },
         }
         for factor in graph.factors:
-            if factor.scope == "organization":
+            if factor.scope == "organization" and not graph.hierarchy:
                 # A completely empty organization has no identified mix.
                 if rows.empty and factor.kind == "distribution":
                     continue
@@ -414,8 +438,8 @@ def build_states(plan, frame, periods, request):
                     aggregates,
                 )
         for team in teams:
-            team_rows = rows.loc[rows.team.eq(team)]
-            combined_team = working.loc[working.team.eq(team)]
+            team_rows = period_groups.get(team, empty)
+            combined_team = combined_groups[team]
             team_state = {"populations": {}}
             for population in population_names:
                 subset = team_rows.loc[team_rows["__population_" + population]]
@@ -461,7 +485,7 @@ def build_states(plan, frame, periods, request):
             state["teams"][team] = team_state
         states.append(state)
     references = {}
-    for key, supplied in (request.references or {}).items():
+    for key, supplied in (supplied_refs or {}).items():
         references[(month_start(key[0]), key[1])] = supplied
     missing = request.missing_economics or graph.missing_economics
     if missing not in {"carry_observed", "require_reference"}:
@@ -471,6 +495,7 @@ def build_states(plan, frame, periods, request):
         for factor in graph.factors:
             if (
                 factor.scope == "organization"
+                and not graph.hierarchy
                 and factor.name not in state["factors"]
             ):
                 state["factors"][factor.name] = deepcopy(
@@ -497,7 +522,8 @@ def build_states(plan, frame, periods, request):
                         "period": state["period"],
                         "team": team,
                         "population": "all",
-                        "method": "explicit_team_reference",
+                        "method": ("explicit_node_reference" if graph.hierarchy
+                                   else "explicit_team_reference"),
                         "source_period": None,
                     }
                 )
@@ -569,6 +595,8 @@ def build_states(plan, frame, periods, request):
                     raise ValueError(
                         f"Fixed policy differs across periods: {factor.name}"
                     )
+    if graph.hierarchy:
+        attach_nodes(states, paths, order, mixes, missing, assumptions)
     assumptions.extend(
         {k: row[k] for k in (
             "period", "team", "population", "factor", "coordinates",

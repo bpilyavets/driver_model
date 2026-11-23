@@ -231,3 +231,8 @@ Compare employee-aligned, grouped, and effective-rate specifications with
 adds typed cell means and workload-weighted rates to v2 declarations;
 existing models retain their identities and behavior. See the
 [aggregation contract](docs/model-authoring.md#effective-rate-and-worked-time-engine-030).
+
+
+For the four team and line analysis orders, see the
+[worked hierarchy notebook](examples/organizational_hierarchy.ipynb) and
+[model options](docs/model-authoring.md#organizational-hierarchy-selection).

@@ -103,11 +103,16 @@ concurrent runs must use process isolation, not threads.
   policy. Explicit references affect missing economics only; preserve
   observed economics. `require_reference` must reject unsupported one-sided
   absence. Whole-team copying retains zero exposure at the absent endpoint.
+- For opt-in v2 organizational hierarchies, resolve the model-approved
+  order before state construction. Line is unique per employee-month when
+  selected. Keep payroll games at the selected leaf, align employees
+  organization-wide, and complete conditional shares within their parent.
+  Reconcile organizational replacement and each node's local bridge.
 - Organizational and local bridges are distinct allocations. Never combine
   them or sum hierarchy parents with their children. Driver summaries
   aggregate organizational leaves without new attribution games.
 - Nested costs must satisfy the compiler's affine-child restrictions;
-  organization costs remain additive by team. Propagate with exact
+  organization costs remain additive across organizational leaves. Propagate with exact
   auxiliary zero-to-one games, never division by a parent's cost change.
   Preserve offsetting children when the parent change is zero.
 - Exact is the default, with the 15-player exact-game guard. Leaves may

@@ -94,8 +94,7 @@ the same endpoints while defining different attribution games. A complete
 conditional table is one state object, not one game per conditioning row.
 Grouping factors into one switch is also an explicit modeling choice.
 Nested boundaries must be affine in each scalar child cost; shared state
-ownership across child boundaries is rejected. Organization costs remain
-additive by team. The standard N/team-share outer game is a reusable
+ownership across child boundaries is rejected. Organization costs are additive across the declared organizational leaves. The standard N/team-share outer game is a reusable
 choice, not the only supported aggregate expression.
 
 Membership represents which employee profiles contribute to an average,
@@ -342,6 +341,39 @@ model or another Shapley game. Its team breakdown uses organizational
 contributions exclusively; local impacts do not substitute for them.
 
 ---
+
+## Selectable team and line hierarchies
+
+A v2 model can opt into team, line, team → line, or line → team. A run
+chooses one declared order. With team first, organizational cost is total
+exposure times the sum over teams of team share times blended team unit
+cost. That unit cost is the sum over lines of the conditional line share
+times the team–line unit cost. Reversing the order conditions team shares
+on line. Single-dimension models pool the workforce at the selected grain.
+
+Each employee-month has one team and, in analyses using line, one line
+across every contract row. Exposure assignment and employee matching use
+the full organization. Detailed economic games run once per observed
+leaf in the union of the comparison periods. Each parent switches its
+whole child-share vector. Exact additive term games allocate interactions
+and exact zero-to-one games propagate unit economics to their children.
+
+Organizational children sum to their organizational economics parent.
+A separate bridge at every non-root node allocates that node's observed
+payroll change between local scale and unit economics, then expands the
+unit economics. For example, moving organizational exposure from 100 to
+200 while a team's share falls from 40% to 20% leaves its own exposure at
+40. A unit-cost increase of 3 gives a local change of 120. Its economic
+contribution in the organizational bridge is 130, since the outer game
+also evaluates the two cross-period scale/share combinations.
+
+Sparse cell fallback stays within the same economic leaf, population and
+period. An absent leaf retains zero exposure. Missing unit economics and
+a wholly absent parent's child-share vector use the declared completion
+policy. Carry uses the same node in the other period. The recorded mix
+can have positive conditional shares even when the parent's observed
+exposure is zero. A node absent in both periods has no game.
+See the [worked example](../production/examples/organizational_hierarchy.ipynb).
 
 # 6. Permanent workforce model
 

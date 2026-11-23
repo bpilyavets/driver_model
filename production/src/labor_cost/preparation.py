@@ -79,7 +79,11 @@ class PreparedInput(DatasetSnapshot):
 
 def _context(compiled, request):
     """Capture settings that determine which rows are valid or selected."""
+    order = compiled.plan.graph.resolve_order(request.hierarchy)
     return {
+        **(
+            {"hierarchy": list(order)} if compiled.plan.graph.hierarchy else {}
+        ),
         "model_fingerprint": compiled.fingerprint,
         "periods": sorted(
             {
@@ -214,6 +218,9 @@ def prepare_input(model, dataset, request, *, missing_team=None):
         schema.employment_type,
         schema.team,
     }
+    use_line = "line" in graph.resolve_order(request.hierarchy)
+    if use_line:
+        required.add(graph.hierarchy.line_source)
     missing = required - set(raw.columns)
     if missing:
         raise ValueError(f"Missing source key columns: {sorted(missing)}")
@@ -260,7 +267,25 @@ def prepare_input(model, dataset, request, *, missing_team=None):
         for row in np.flatnonzero(np.asarray(mask)):
             reasons[row].append(reason)
 
-    for column in (schema.employee, schema.employment_type, schema.team):
+    identifiers = [schema.employee, schema.employment_type, schema.team]
+    if use_line:
+        line = graph.hierarchy.line_source
+        identifiers.append(line)
+        valid = (
+            data[[schema.employee, line]]
+            .apply(
+                lambda col: col.map(
+                    lambda x: isinstance(x, str) and bool(x.strip())
+                )
+            )
+            .all(axis=1)
+        )
+        assigned_lines = data.loc[valid].groupby(
+            [selected_dates.to_numpy()[valid], schema.employee]
+        )
+        if (assigned_lines[line].nunique() > 1).any():
+            raise ValueError("Each employee-month must have exactly one line")
+    for column in identifiers:
         valid = data[column].map(
             lambda x: isinstance(x, str) and bool(x.strip())
         )

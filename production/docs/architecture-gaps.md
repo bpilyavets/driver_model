@@ -232,3 +232,13 @@ separately scoped calculation/test changes. Preserve the notebook oracle,
 existing reference-model semantics and numerical tolerances. Any intended
 methodology change must be explicit and must not be disguised as a missing
 feature being removed from the documentation.
+
+
+### Selectable hierarchy evidence
+
+Opt-in v2 hierarchy runs additionally reconcile row and source payroll to
+each organizational node, record immediate child replacement for every
+owner, and export effective child shares. A team–line leaf can contain
+multiple employment populations. The existing requirement for independent
+population economics, and the remaining diagnostics and template-specific
+analytical checks above, still apply.

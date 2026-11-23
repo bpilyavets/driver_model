@@ -1,4 +1,8 @@
-# Run bundle schema 2 (schema 1 remains readable)
+# Run bundles
+
+Team-only declarations write schema 2. Models with selectable hierarchies
+write [schema 3](#hierarchy-enabled-runs-bundle-schema-3). The loader reads
+schemas 1, 2 and 3.
 
 `export_run(result, new_directory)` writes a complete temporary directory
 and renames it into place only after all files succeed. Existing
@@ -213,3 +217,25 @@ an entire population was copied. `canonical_data` includes
 Weighted rates are cell aggregates and are not written as row inputs.
 Source snapshot amounts remain unchanged. All new tables round-trip through
 ordinary bundle export/load and can be inspected without internal states.
+
+
+## Hierarchy-enabled runs (bundle schema 3)
+
+Version 3 stores the selected hierarchy in `settings.hierarchy`.
+The loader also reads versions 1 and 2. Existing model declarations keep
+their original fingerprints and result schemas.
+
+| Table | Meaning |
+|---|---|
+| `node_summary` | One row per organizational node, including the root, with exposure, observed payroll and change. |
+| `hierarchy` | Currency allocations for the organization and separate local owners. Within an owner, `path` and `parent_path` link immediate attribution children. |
+| `bridge`, `driver_bridge` | Organizational leaves and their signed driver totals. |
+| `local_bridges` | Local currency leaves keyed by `owner_path`, the node whose observed change they explain. |
+| `diagnostics/node_mix` | Effective share and observed child exposure per period and parent. See `assumptions` for carry and explicit references. |
+| `validation` | Recorded node endpoint, source/row, child-replacement and bridge checks. The payroll reference basis identifies independent or reconstructed evidence. |
+
+`result.select_node(path)` returns the node summary, its organizational
+leaf contributions and its standalone local bridge. Root-scale and
+parent-mix terms belong to the node owning those switches. Selecting a
+child leaves those terms with its parent. The root's bridge is available
+in `bridge`. Selectors work on restored tables without internal states.

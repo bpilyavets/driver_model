@@ -103,7 +103,8 @@ def default_model():
 
 
 def build_state(
-    model, dataset, period, *, source_cost_column=None, exposure_column=None
+    model, dataset, period, *, source_cost_column=None, exposure_column=None,
+    hierarchy=None,
 ):
     """Build one observed state for standalone costing without attribution.
 
@@ -115,6 +116,8 @@ def build_state(
         Employee/employment-type/month records.
     period : str or Timestamp
         One observed month. No other month supplies economics or inputs.
+    hierarchy : tuple of str, optional
+        Select one of the model's declared organizational orders.
     source_cost_column, exposure_column : str, optional
         Independent payroll reference and explicit exposure source.
 
@@ -144,6 +147,7 @@ def build_state(
     request = AnalysisRequest(
         str(month),
         str(month),
+        hierarchy=hierarchy,
         source_cost_column=source_cost_column,
         exposure_column=exposure_column,
     )
@@ -154,6 +158,15 @@ def build_state(
     state = states[0]
     state["_graph_state"] = True
     state["_model_fingerprint"] = compiled.fingerprint
+    if graph.hierarchy:
+        from .hierarchy import cost_term, node_units, reconcile_nodes
+
+        units = node_units(compiled.plan, state)
+        endpoints = {
+            path: (cost_term(node["exposure"], 1., units[path]),)
+            for path, node in state["nodes"].items()
+        }
+        reconcile_nodes((state,), canonical, endpoints, [])
     check(
         "Standalone source cost",
         graph_cost(compiled.plan, state),

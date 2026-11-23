@@ -285,6 +285,31 @@ class Game:
 
 
 @dataclass(frozen=True)
+class OrganizationalHierarchy:
+    """Map line assignments and declare the supported outer factorizations."""
+
+    line_source: str
+    orders: tuple = (("team",), ("line",), ("team", "line"), ("line", "team"))
+    default: tuple = ("team",)
+
+    def __post_init__(self):
+        """Normalize JSON declarations and reject unsupported orders."""
+        orders = tuple(tuple(order) for order in self.orders)
+        possible = {("team",), ("line",), ("team", "line"), ("line", "team")}
+        if (
+            not isinstance(self.line_source, str)
+            or not self.line_source.strip()
+        ):
+            raise ValueError("Hierarchy needs a line source column")
+        if set(orders) - possible or len(set(orders)) != len(orders):
+            raise ValueError("Invalid or duplicate organizational orders")
+        if tuple(self.default) not in orders:
+            raise ValueError("Default hierarchy must be an allowed order")
+        object.__setattr__(self, "orders", orders)
+        object.__setattr__(self, "default", tuple(self.default))
+
+
+@dataclass(frozen=True)
 class ModelGraph:
     """The complete v2 source, state, cost and attribution declarations.
 
@@ -303,15 +328,33 @@ class ModelGraph:
     organization: Game
     local: Game
     missing_economics: str = "carry_observed"
+    hierarchy: OrganizationalHierarchy | None = None
 
     def __post_init__(self):
         """Freeze all declaration collections."""
+        if self.hierarchy is not None and not isinstance(
+            self.hierarchy, OrganizationalHierarchy
+        ):
+            raise ValueError("Expected an OrganizationalHierarchy declaration")
         for name in ("populations", "fields", "row_costs", "factors", "games"):
             object.__setattr__(self, name, tuple(getattr(self, name)))
+
+    def resolve_order(self, selection=None):
+        """Resolve an analysis choice against the model-approved orders."""
+        allowed = self.hierarchy.orders if self.hierarchy else (("team",),)
+        default = self.hierarchy.default if self.hierarchy else ("team",)
+        order = default if selection is None else tuple(selection)
+        if order not in allowed:
+            raise ValueError(
+                f"Unsupported hierarchy {order}; choose {allowed}"
+            )
+        return order
 
     def to_dict(self):
         """Return the canonical declarative JSON payload."""
         data = asdict(self)
+        if self.hierarchy is None:
+            del data["hierarchy"]
         for factor in data["factors"]:
             if factor["weight"] is None:
                 factor.pop("weight")
@@ -324,6 +367,8 @@ class ModelGraph:
     def from_dict(cls, data):
         """Restore declarations using a closed grammar."""
         data = dict(data)
+        if "hierarchy" in data:
+            data["hierarchy"] = OrganizationalHierarchy(**data["hierarchy"])
         data["source"] = SourceSchema(**data["source"])
         for key, constructor in (
             ("populations", Population),

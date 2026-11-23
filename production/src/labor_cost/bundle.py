@@ -119,11 +119,18 @@ def load_run(source):
     """
     source = Path(source).resolve()
     manifest = json.loads((source / "manifest.json").read_text("utf-8"))
-    if manifest.get("bundle_version") not in {1, BUNDLE_VERSION}:
+    if manifest.get("bundle_version") not in {1, 2, BUNDLE_VERSION}:
         raise ValueError("Unsupported run bundle version")
     spec = ModelSpec.from_dict(manifest["model"])
     if spec.fingerprint != manifest["model_fingerprint"]:
         raise ValueError("Model specification fingerprint mismatch")
+    if manifest["bundle_version"] == 3:
+        order = manifest.get("settings", {}).get("hierarchy")
+        if (spec.graph is None or spec.graph.hierarchy is None
+                or not isinstance(order, list)
+                or list(spec.graph.resolve_order(order)) !=
+                manifest.get("compiled_graph", {}).get("effective_hierarchy")):
+            raise ValueError("Bundle hierarchy and model settings disagree")
     tables = {}
     for name, entry in manifest["tables"].items():
         path = (source / entry["file"]).resolve()

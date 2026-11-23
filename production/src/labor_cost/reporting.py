@@ -119,6 +119,16 @@ class _ReportData:
             raise ValueError("driver_bridge: IDs differ from bridge leaves.")
         _equal(summed.reindex(self.drivers.driver), self.drivers.impact,
                "Driver totals versus organizational leaves")
+        if "node_summary" in result.tables:
+            self.nodes = _table(result, "node_summary")
+            _finite(self.nodes, [*_ENDPOINTS, "cost_change"], "node_summary")
+            if self.nodes.node_path.duplicated().any():
+                raise ValueError("Duplicate organizational node paths")
+            top = self.nodes.loc[self.nodes.depth.eq(1)]
+            _equal(top[_ENDPOINTS].sum().to_numpy(), self.endpoints,
+                   "Node totals versus organizational endpoints")
+            self.summary = top
+            return
         summary = _table(result, "team_summary")
         summary = summary.rename(columns={
             "period_a_cost": "period_A_cost",
@@ -641,9 +651,17 @@ class NotebookReport:
         ) + "</dl>"
         display(HTML(heading))
         self.figures["organization"].show(renderer=renderer)
-        for name in ("driver_bridge", "team_summary", "validation_summary",
+        summary = (
+            "node_summary" if "node_summary" in self.tables else "team_summary"
+        )
+        for name in ("driver_bridge", summary, "validation_summary",
                      "assumption_summary", "estimator_summary"):
             self._display_table(name, display, HTML)
+        for name in self.tables:
+            if name == "driver_by_node" or name.startswith(
+                "organizational_contributions/"
+            ):
+                self._display_table(name, display, HTML)
         for name, figure in self.figures.items():
             if name != "organization":
                 figure.show(renderer=renderer)
@@ -661,14 +679,27 @@ class NotebookReport:
         ))
 
 
-def report(result, *, teams=None, driver=None, currency_label="Currency",
-           show=True, renderer=None, chart="impacts", top_n=None):
+def report(
+    result,
+    *,
+    teams=None,
+    nodes=None,
+    driver=None,
+    currency_label="Currency",
+    show=True,
+    renderer=None,
+    chart="impacts",
+    top_n=None,
+):
     """Build and optionally display a report from existing analysis tables.
 
     Parameters
     ----------
     result : AnalysisResult
         An analyzed or restored run; no calculations are executed.
+    nodes : sequence of node paths, optional
+        Show each selected node's organizational contributions and local
+        payroll bridge. A path is an ordered tuple of dimension/value pairs.
     teams : sequence of str, optional
         Selected local charts and summary/breakdown teams. None/empty
         adds no local charts and leaves other team views unrestricted.
@@ -696,16 +727,22 @@ def report(result, *, teams=None, driver=None, currency_label="Currency",
         raise ValueError("chart must be 'impacts' or 'waterfall'.")
     _top_n(top_n)
     data = _ReportData(result)
+    hierarchical = "node_summary" in result.tables
+    if nodes is not None and not hierarchical:
+        raise ValueError("Node selection requires a hierarchy-enabled run")
+    if hierarchical and teams and "team_summary" not in result.tables:
+        raise ValueError("Select dimension-qualified nodes for this order")
     selected = data.teams(teams)
     plot = _impacts if chart == "impacts" else _waterfall
     figures = {"organization": plot(
         data, data.drivers, "Organizational cost drivers", currency_label,
         top_n=top_n,
     )}
-    summary = data.summary
-    if selected:
+    summary = data.nodes if hierarchical else data.summary
+    if selected and not hierarchical:
         summary = summary.set_index("team").loc[list(selected)].reset_index()
-    tables = {"driver_bridge": data.drivers, "team_summary": summary,
+    summary_name = "node_summary" if hierarchical else "team_summary"
+    tables = {"driver_bridge": data.drivers, summary_name: summary,
               **_summaries(result)}
     for team in selected:
         frame = data.local(team)
@@ -714,11 +751,38 @@ def report(result, *, teams=None, driver=None, currency_label="Currency",
                             f"Local team cost change: {team}",
                             currency_label, top_n=top_n)
         tables[key] = frame
+    for node in nodes or ():
+        path = tuple(tuple(part) for part in node)
+        selection = result.select_node(path)
+        if not path:
+            continue
+        key = repr(path)
+        tables["organizational_contributions/" + key] = selection[
+            "organization_contributions"
+        ]
+        local_frame = selection["local_bridge"]
+        local_endpoints = _bridge(local_frame, "local", f"Local {path}")
+        _equal(local_endpoints, selection["node_summary"][_ENDPOINTS].iloc[0],
+               "Local bridge versus observed node endpoints")
+        figures["local/" + key] = plot(
+            data, local_frame, f"Local payroll change: {path}", currency_label,
+            top_n=top_n,
+        )
+        tables["local/" + key] = local_frame
     for key, figure in figures.items():
         tables["chart_data/" + key] = pd.DataFrame(
             deepcopy(figure.layout.meta["chart_data"])
         )
-    if driver is not None:
+    if (
+        driver is not None
+        and hierarchical
+        and "team_summary" not in result.tables
+    ):
+        scoped = data.bridge.loc[data.bridge.driver.eq(driver)]
+        if scoped.empty:
+            raise ValueError("Unknown organizational driver")
+        tables["driver_by_node"] = scoped.copy()
+    elif driver is not None:
         figures["driver_by_team"], tables["driver_by_team"] = _driver_plot(
             data, driver, selected, currency_label,
         )
@@ -736,6 +800,7 @@ def report(result, *, teams=None, driver=None, currency_label="Currency",
         "dataset": {k: data.manifest.get("dataset", {}).get(k, "Unavailable")
                     for k in ("id", "version")},
         "currency_label": currency_label, "selected_teams": selected,
+        **({"hierarchy": settings["hierarchy"]} if hierarchical else {}),
         "chart": chart, "top_n": top_n,
         "source_cost_basis": basis,
         "exposure": data.manifest.get("exposure_config", "Unavailable"),

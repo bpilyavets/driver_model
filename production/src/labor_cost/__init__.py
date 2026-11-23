@@ -17,6 +17,7 @@ from .graph import (
     FieldSpec,
     Game,
     ModelGraph,
+    OrganizationalHierarchy,
     Population,
     RowCost,
     SourceSchema,
@@ -46,7 +47,7 @@ from .reporting import (
 )
 from .spec import DistributionSpec, InputSpec, ModelSpec, WorkforceStructure
 
-__version__ = "0.2.0"
+__version__ = "0.4.0"
 __all__ = [
     "build_state",
     "Aggregate",
@@ -54,6 +55,7 @@ __all__ = [
     "FieldSpec",
     "Game",
     "ModelGraph",
+    "OrganizationalHierarchy",
     "Population",
     "RowCost",
     "SourceSchema",

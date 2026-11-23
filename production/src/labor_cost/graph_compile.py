@@ -113,9 +113,12 @@ class GraphPlan:
     graph: ModelGraph
     order: tuple
 
-    def inspect(self):
-        """Expose executable structure without a dataset or attribution."""
+    def inspect(self, *, hierarchy=None):
+        """Inspect the effective hierarchy and games without running data."""
+        order = self.graph.resolve_order(hierarchy)
         return {
+            **({"effective_hierarchy": list(order)} if self.graph.hierarchy
+               else {}),
             "schema_version": 2,
             "source_grain": "employee/employment_type/month",
             "graph": self.graph.to_dict(),
@@ -346,6 +349,31 @@ def compile_graph(graph):
         visiting.remove(name)
         order.append(name)
 
+    if graph.hierarchy:
+        from .graph_templates import (
+            local_game,
+            organization_game,
+            outer_factors,
+        )
+
+        outer = {f.name: f for f in graph.factors if f.scope == "organization"}
+        if (graph.organization != organization_game(graph.team_game)
+                or graph.local != local_game(graph.team_game)
+                or outer != {f.name: f for f in outer_factors()}):
+            raise ValueError(
+                "Selectable hierarchy requires standard outer games"
+            )
+        outer_drivers = {
+            "workforce_scale", "team_mix", "line_mix", "line_mix_within_team",
+            "team_mix_within_line",
+        }
+        if any(s.driver_id in outer_drivers for g in graph.games
+               for s in g.switches):
+            raise ValueError(
+                "A payroll driver reuses a hierarchy mix/scale ID"
+            )
+        if "line" in fields or "line" in dict(pairs):
+            raise ValueError("Hierarchy reserves the canonical line column")
     visit(graph.team_game)
     if set(order) != set(games):
         raise ValueError("games: unused games must be removed or connected")

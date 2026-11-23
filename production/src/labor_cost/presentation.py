@@ -678,6 +678,17 @@ def render_model(model, *, notation=None):
         "data reconciliation. Organizational and local costs are separate "
         "views; do not add their allocations."
     ]
+    if graph.hierarchy:
+        choices = ", ".join(
+            " → ".join(order) for order in graph.hierarchy.orders
+        )
+        notes.append(
+            f"Organizational orders available per analysis: {choices}. "
+            "The team-axis equations show the standard one-level template. "
+            "With two levels, the outer mixture uses the first dimension "
+            "and each parent has a conditional mixture of its children. "
+            "The payroll games run at each selected leaf."
+        )
     if spec.graph is None:
         notes.append(
             "V1 compatibility model: aggregate equations and supporting "

@@ -206,3 +206,14 @@ does not claim complete validation or restore missing coverage/support
 diagnostics; all [architecture gaps](architecture-gaps.md) remain open.
 Generic inner-game cell impacts have different units and are not charted
 as organizational or local currency contributions.
+
+
+## Team and line nodes
+
+For a hierarchy-enabled run, pass
+`report(result, nodes=[(("team", "Alpha"),)], show=False)` to build the
+organizational report plus the selected team's local payroll chart and
+organizational contribution table. A team–line pair takes a two-element
+path in the run's order. Use `result.table("node_summary")` to see all
+paths and observed endpoints. `result.select_node(path)` also exposes
+the values directly. Team-only reports retain their team selectors.

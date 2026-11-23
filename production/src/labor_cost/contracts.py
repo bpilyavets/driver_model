@@ -8,8 +8,8 @@ from hashlib import sha256
 import numpy as np
 import pandas as pd
 
-ENGINE_VERSION = "0.3.0"
-BUNDLE_VERSION = 2
+ENGINE_VERSION = "0.4.0"
+BUNDLE_VERSION = 3
 
 
 def frame_fingerprint(frame):
@@ -81,6 +81,7 @@ class AnalysisRequest:
     explainer: str = "exact"
     n_permutations: int = 256
     random_seed: int = 0
+    hierarchy: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -121,6 +122,30 @@ class AnalysisResult:
         """
         return self.tables[name].copy(deep=True)
 
+    def select_node(self, path):
+        """Return a node's endpoints, organizational leaves and local bridge.
+
+        Use ordered dimension/value pairs, e.g. (("team", "A"),).
+        Selection reuses portable results, including on a restored bundle.
+        """
+        path = tuple(tuple(part) for part in path)
+        summary = self.table("node_summary")
+        node = summary.loc[summary.node_path.map(lambda p: p == path)]
+        if node.empty:
+            raise ValueError(f"Unknown hierarchy node: {path!r}")
+        bridge = self.table("bridge")
+        organization = bridge.loc[bridge.node_path.map(
+            lambda p: p[:len(path)] == path
+        )]
+        local = self.table("local_bridges")
+        return {
+            "node_summary": node,
+            "organization_contributions": organization,
+            "local_bridge": local.loc[
+                local.owner_path.map(lambda p: p == path)
+            ],
+        }
+
     def select_teams(self, teams):
         """Select existing results without recomputing or renormalizing.
 
@@ -131,6 +156,8 @@ class AnalysisResult:
         if isinstance(teams, str):
             raise ValueError("Pass a sequence of team names, not a string")
         selected = tuple(dict.fromkeys(teams))
+        if "team_summary" not in self.tables:
+            raise ValueError("Use select_node for this hierarchy order")
         summary = self.tables["team_summary"]
         unknown = set(selected) - set(summary.team)
         if unknown:
