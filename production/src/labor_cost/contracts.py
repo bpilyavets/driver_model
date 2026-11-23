@@ -42,7 +42,7 @@ class DatasetSnapshot:
     _frame: pd.DataFrame = field(repr=False, compare=False)
 
     def __init__(self, dataset_id, version, frame):
-        """Freeze a caller-supplied DataFrame without changing its contents."""
+        """Copy a caller-supplied DataFrame and record its fingerprint."""
         if not all(
             isinstance(x, str) and x.strip() for x in (dataset_id, version)
         ):
@@ -59,7 +59,7 @@ class DatasetSnapshot:
 
     @property
     def frame(self):
-        """Return a copy; consumers cannot mutate the retained snapshot."""
+        """Return a pandas deep copy of the retained source frame."""
         return self._frame.copy(deep=True)
 
 
@@ -110,11 +110,15 @@ class AnalysisResult:
 
     @property
     def run_id(self):
-        """Return this run's immutable identifier."""
+        """Return the run identifier recorded in the manifest."""
         return self.manifest["run_id"]
 
     def table(self, name):
-        """Return a defensive copy of one named output or dataset table."""
+        """Return a pandas deep copy of one named output or dataset table.
+
+        Nested Python objects in object-dtype cells are not recursively
+        copied. Treat those values as read-only or copy them before editing.
+        """
         return self.tables[name].copy(deep=True)
 
     def select_teams(self, teams):

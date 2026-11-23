@@ -65,6 +65,13 @@ Default exposure splits one person's monthly workforce unit equally
 across observed employment types. A selected exposure column bypasses
 that assumption without renormalization.
 
+If exclusions are an accepted input policy, use optional `prepare_input`
+and pass its `PreparedInput` result to `analyze`. It reports every excluded
+row and rejects exclusions above 1% of selected-period rows. An explicit
+`missing_team="Unassigned"` can retain otherwise valid rows lacking a team.
+Ordinary analysis never drops rows. See the
+[preparation contract](docs/model-authoring.md#explicit-input-preparation).
+
 A `DatasetSnapshot` copies its input. Its `frame` property returns another
 copy. Dataset/model versions and content fingerprints are included in
 results. All teams in the two selected months participate in calculation
@@ -123,14 +130,18 @@ clients load its declarations and use the installed library; they do not
 import analyst authoring scripts. The installed implementation remains
 accessible in its execution environment.
 
-## Results and dashboard integration
+## Results and reporting integration
 
 See [the bundle contract](docs/run-bundles.md).
 
 For interactive notebook charts, install `.[reporting]` (also included in
 `.[notebook]`) and use `report(result, teams=[...])`. The
-[reporting reference](docs/reporting.md) covers Plotly organizational and
-local waterfalls, driver contributions by team and offline HTML export.
+[reporting reference](docs/reporting.md) covers the default ranked driver
+impacts with separate period totals, optional organizational/local
+waterfalls, driver contributions by team and offline HTML export.
+Cost increases are red and decreases green; driver tooltips show the
+individual impact. `report(result, chart="waterfall", top_n=5)` retains
+the five largest absolute impacts and sums the rest into Other.
 Run the self-contained [reporting showcase](examples/reporting_showcase.ipynb)
 to explore these features using the experimental model and its mock data.
 Reporting consumes existing results, including those restored by `load_run`,

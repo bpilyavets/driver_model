@@ -84,6 +84,13 @@ including model declarations, formula previews, bundles and reporting.
 
 ## Lifetime, updates and provenance
 
+Version caveat (2026-11-22): direct-source loading records
+`labor_cost.__version__`, currently `0.2.0`, although distribution metadata
+and the analysis engine declare `0.3.0`. Keep the commit and file hashes
+as the code identity; the version mismatch remains an implementation
+issue, not a different loader policy. See the
+[documentation audit](documentation-audit.md).
+
 Keep `CODE` alive throughout the analysis. `CODE.close()` removes only its
 private modules and temporary files; repeated calls are safe. Already-held
 Python references cannot be revoked: do not use them after closing. Third-party

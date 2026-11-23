@@ -228,7 +228,7 @@ Keep these names distinct:
 | Source category value | `temporary` in `employment_type` | Population predicate |
 | Population ID | `agency` | Field/factor/game `population`, `RowCost`, partition `members`, partition `select` |
 | Game ID | `temporary_cost_game` | `child(...)` and `Switch(child=...)` |
-| Field ID | `rate` bound to source `vendor_hourly_rate` | `field(...)` and aligned factor `source` |
+| Field ID | `rate` bound to source `vendor_hourly_rate` | `field(...)`; aligned, policy, mean and weighted-mean `source`; weighted-mean `weight` |
 | Factor ID | `rates` | `value(...)` and factor switches |
 
 For example, `Population("agency", {"employment_type": "temporary"})`
@@ -258,7 +258,9 @@ and recorded validation alone do not prove a chosen model is correct.
 | population_mix | Complete exposure-share vector for an explicit partition |
 | aligned | Observed input vector, matched by employee/employment type |
 | membership | Sparse normalized employee profiles and positive conversion factors |
-| payment | Exposure-weighted cell mean of a declared row amount |
+| payment | Sum of actual row amounts / exposure, or exposure-weighted mean of per-exposure row amounts |
+| mean | Quantity per exposure from a declared source field; see basis rules below |
+| weighted_mean | Workload-weighted rate from declared source and weight fields, with configurable zero-weight handling (`error` by default) |
 | policy | Fixed table from a declared field, consistent across both periods |
 
 Workforce distributions use exposure, not salary or worked time. Default
@@ -270,7 +272,9 @@ Payments divide actual amounts by exposure before weighted aggregation.
 Membership carries 1/exposure factors; aligned inputs stay observed.
 `basis="per_exposure"` uses supplied normalized values and membership
 conversion factors of one. The analyst must declare the basis correctly;
-endpoint reconciliation detects inconsistency with the row formula.
+endpoint reconciliation detects discrepancies at the checked boundaries.
+It cannot establish that every component has the correct basis: offsetting
+population errors can still pass (see [GAP-001](architecture-gaps.md#gap-001-population-level-aggregate-reconciliation)).
 
 Aligned inputs match across the full organization within their declared
 population. Team, grade and region transfers retain identity. A missing
@@ -294,7 +298,8 @@ Its default regions are coefficient bands, not identified geography.
 
 Supported arithmetic is finite constants, addition, subtraction and
 multiplication. Row units include currency, time, exposure, currency/time,
-currency/exposure and dimensionless values. Aggregate expressions also
+currency/exposure, time/exposure, 1/exposure and dimensionless values.
+Aggregate expressions also
 track exposure units and named categorical axes.
 
 `sum_over` explicitly reduces axes; `select` chooses a category;
@@ -410,8 +415,10 @@ see the exact [bundle/table contract](run-bundles.md).
 
 V1 catalog entries and run bundles remain readable. New bundles use
 schema 2 and include the compiled declaration graph. Model publication
-never overwrites an existing version, and deployed execution never loads
-the PoC notebook.
+refuses to overwrite an existing destination file; it does not enforce
+global version uniqueness across different files or catalogs. Catalogs
+resolve explicitly declared IDs and versions. Deployed execution never
+loads the PoC notebook.
 
 ## Effective rate and worked time (engine 0.3.0+)
 

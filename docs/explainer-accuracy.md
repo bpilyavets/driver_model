@@ -1,5 +1,11 @@
 # Exact versus permutation attribution: measured accuracy
 
+These measurements concern the preserved PoC notebook's permanent-pay
+game. They are historical fixture benchmarks, not direct accuracy tests
+of every custom v2 graph or a current release verification run. The graph
+runtime also defaults to 256 permutation cycles when explicitly selected,
+but that shared setting does not transfer these measured error bounds.
+
 The default remains exact. For larger permanent games, **256 forward/reverse
 cycles is a useful starting point, not a precision guarantee**. In the tested
 20-driver payroll case, median aggregate allocation error was **1.22%**, with

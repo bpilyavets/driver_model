@@ -23,6 +23,17 @@ alone does not establish correct model interpretation or release readiness.
 - **Contributors:** [engineering instructions](AGENTS.MD), methodology and
   [verification evidence](production/docs/verification.md).
 
+For input defects, use the optional audited
+[`prepare_input` workflow](production/docs/model-authoring.md#explicit-input-preparation)
+before analysis. It reports exclusions and rejects a drop fraction above
+1% of the selected-period rows; ordinary `analyze` remains strict.
+
+For visual results, [`report(result)`](production/docs/reporting.md) shows
+ranked driver impacts and separate period totals. Cost increases are red
+and decreases green. Use `chart="waterfall", top_n=5` for a condensed
+waterfall with the remaining impacts summed into Other. Reports also work
+on loaded run bundles without recalculating attribution.
+
 ## Install and choose the interpreter
 
 From the repository root, with Python 3.10 or later:

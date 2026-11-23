@@ -601,15 +601,19 @@ Use the installed `labor_cost` package. Public interfaces are:
 | `compile_model(spec)` | Validate declarations and return an inspectable `CompiledModel`. |
 | `DatasetSnapshot(id, version, frame)` | Own a copied source frame and fingerprint. |
 | `AnalysisRequest(period_a, period_b, ...)` | Select periods, source reference, exposure/completion overrides and estimator settings. |
+| `prepare_input(model, dataset, request, *, missing_team=None)` | Optional audited exclusions with a fixed 1% limit; returns `PreparedInput` for analysis. |
 | `analyze(model, dataset, request)` | Adapt source, construct/complete states, cost, attribute and assemble `AnalysisResult`. |
 | `build_state(model, dataset, period, ...)` | Observed-only state construction; no comparison-month borrowing. |
 | `cost(state, model)` | Pure signed cost evaluation; no historical completion or SHAP. |
 | `publish_model(..., validated_result=...)` | Write model JSON after a matching successful validation run. |
 | `Catalog(path)` | Resolve explicit model/dataset versions from filesystem configuration. |
 | `export_run(result, destination)` / `load_run(path)` | Write/read portable tables and metadata without executing stored model code on load. |
+| `render_formula(expr, ...)` / `render_model(model, ...)` | Data-free mathematical previews with optional notation overrides. |
+| `report(result, ...)` | Optional Plotly presentation of existing results, including loaded bundles. |
 
 Period selection includes all teams before alignment. Team selection
-occurs only through `result.select_teams(...)`; it does not change employee
+uses presentation views such as `result.select_teams(...)` and report/plot
+team arguments; it does not change employee
 matching or recalculate a filtered-population game. `AnalysisRequest` has
 no team filter. Caller DataFrames remain unchanged.
 
@@ -624,10 +628,17 @@ Four version concepts are independent:
 
 | Identity | Current example |
 | --- | --- |
-| Package / engine version | `0.2.0` |
+| Distribution / engine version | `0.3.0` in `pyproject.toml` / `ENGINE_VERSION` |
 | Model declaration schema | Legacy v1 or explicit graph schema 2 |
 | Analyst model version | Built-in `1.0.0` (v1) / `2.0.0` (native v2); custom versions are analyst-assigned |
 | Bundle schema | 2 for new exports; schema 1 remains readable |
+
+Known implementation inconsistency as of 2026-11-22:
+`labor_cost.__version__` still reports `0.2.0`, including in direct-source
+loader provenance. This differs from the distribution and engine versions
+above. The documentation audit records the mismatch without changing
+runtime code; version strings alone do not identify the loaded revision.
+The `mean` and `weighted_mean` primitives require engine 0.3.0 or later.
 
 `labor_cost_model()` retains its v1 default and fingerprint.
 `labor_cost_model(schema_version=2)` selects the native graph template.
@@ -1091,9 +1102,22 @@ separate local bridge. `select_teams` is presentation-only. Consumers must
 not sum parents with leaves or combine local and organizational impacts.
 The engine returns data; it does not build the legacy waterfalls/report.
 
+The separate optional `labor_cost.report` layer consumes these tables.
+Its default `chart="impacts"` shows ranked driver impacts with separate
+period totals. Positive cost changes are red and negative changes green;
+tooltips show individual impacts. `chart="waterfall", top_n=5` retains the
+five largest absolute impacts and sums the rest into Other, including an
+offsetting zero remainder. Report selections never recalculate attribution.
+See the [reporting API](../production/docs/reporting.md).
+
 Both graph declaration versions expose aligned inputs, memberships,
 state-factor values, matching/carry records, exposure allocation,
-fallback records and cell impacts. They do not yet provide the legacy
+fallback records, aggregate-factor evidence and cell impacts. The
+`diagnostics/aggregate_factors` table records effective values, donor
+statistics and zero-weight completion for `mean`/`weighted_mean` factors;
+it can be empty for other models. `input_quality/*` tables accompany
+analyses receiving `PreparedInput` and retain preparation evidence.
+They do not yet provide the legacy
 coverage, unsupported-support and matched-movement summaries below.
 Generic `diagnostics/cell_impacts` currently contains inner-game rows
 only; `impact_unit` is currency/exposure. Outer games have separate audits

@@ -35,6 +35,7 @@ Maintain this separation:
 ModelSpec -> compiler -> CompiledModel
                               |
 DatasetSnapshot + AnalysisRequest
+             -> optional audited prepare_input
              -> input adaptation and exposure assignment
              -> observed/comparison state construction and completion
              -> pure cost evaluation
@@ -50,13 +51,20 @@ completion belongs in the comparison builder, never in cost evaluation.
 
 Keep plotting and Jupyter dependencies outside calculation
 code. Catalogs are filesystem JSON indexes; runs are JSON/Parquet bundles.
-The dashboard consumes tables and metadata without internal Python states
-or recalculating attribution. Maintain synchronous in-process execution.
+Reporting and bundle consumers use tables and metadata without internal
+Python states or recalculating attribution. No dashboard is included.
+Maintain synchronous in-process execution.
 Permutation currently uses NumPy's global RNG temporarily; future
 concurrent runs must use process isolation, not threads.
 
 # General analytical requirements
 
+- `analyze` rejects invalid input; it never silently excludes rows.
+  Optional `prepare_input` reports exclusions and returns a `PreparedInput`
+  with audit tables. More than 1% of selected-period rows excluded is an
+  error; exactly 1% is allowed. Missing-team replacement requires an
+  explicit label. Structural conflicts still fail rather than being dropped.
+  Pass the prepared object to analysis to retain its audit evidence.
 - Source grain is employee × employment type × month. Require unique
   keys, month-start periods and one team per employee-month. Source
   column names, employment categories and applicable fields are declared
@@ -125,6 +133,15 @@ Jupyter notebooks are the supported user-facing interface. Mathematical
 previews live in the presentation module and derive from expression trees;
 notation settings do not change model declarations or fingerprints.
 Keep the authoring and analysis notebooks thin, with no stored outputs.
+This convention is not permission to clear existing user outputs:
+`model_authoring.ipynb` and `reporting_showcase.ipynb` currently contain
+saved executions. Preserve them unless their removal is requested.
+
+`report(result)` defaults to ranked driver impacts with separate period
+totals. Positive cost changes are red; negative changes are green.
+`chart="waterfall", top_n=5` shows the five largest absolute impacts and
+the signed sum of remaining drivers as Other. These are presentation
+choices; they must not recalculate attribution or modify result tables.
 
 V2 declarations separate `SourceSchema`/`Population`/`FieldSpec`/`RowCost`,
 state `Factor`s, aggregate expressions, and `Switch`/`Game` definitions.

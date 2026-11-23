@@ -1,5 +1,16 @@
 # Production graph verification evidence
 
+## Reading these records — 2026-11-22
+
+The sections below are dated evidence, not a claim that every command has
+passed on today's checkout. The [documentation audit](documentation-audit.md)
+records the current contract corrections and its own verification scope.
+Earlier statements that all notebooks were unexecuted describe their
+historical state. `model_authoring.ipynb` and `reporting_showcase.ipynb`
+now contain saved executions, which this audit preserves. The module
+`__version__` also differs from the distribution/engine versions; see the
+audit before interpreting version output from deployment records.
+
 ## Jupyter formula previews — 2026-11-01
 
 The formula-preview change adds tree-based mathematical rendering,

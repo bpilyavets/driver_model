@@ -1,7 +1,8 @@
 # Architecture gaps and production-hardening requirements
 
-Status: **open requirements**, reviewed on 2026-11-01 against the current
-working tree. This register distinguishes implemented behavior from the
+Status: **open requirements**, initially reviewed on 2026-11-01 and
+rechecked during the 2026-11-22 documentation audit. This register
+distinguishes implemented behavior from the
 [methodology](../../docs/labor-cost-decomposition.md). It does not waive
 requirements or change model semantics. Documentation alignment does not
 constitute production-readiness certification.
@@ -127,7 +128,13 @@ movement counts must deduplicate employee-month/team membership.
 - `diagnostics/state_factors`, `diagnostics/aligned_inputs`;
 - `diagnostics/membership_profiles`, `diagnostics/employee_alignment`;
 - `diagnostics/exposure_allocation`, `diagnostics/fallbacks`;
-- `diagnostics/cell_impacts`.
+- `diagnostics/aggregate_factors`, `diagnostics/cell_impacts`.
+
+`aggregate_factors` records donor statistics and completion for the new
+`mean`/`weighted_mean` primitives; it is empty when those are unused.
+Analyses receiving `PreparedInput` additionally expose `input_quality/*`
+tables for exclusions and team assignments. Neither addition supplies the
+missing support and movement summaries below.
 
 The compatibility engine additionally provides `coverage`, `unsupported`,
 `salary_support`, `matched` movement/change summaries and enriched
@@ -199,6 +206,9 @@ counted as equivalent production graph coverage.
 | New formulas, pairing, scopes, factorization, grouped/nested games | Graph tests and SDK extension tests | These are direct new-engine checks. |
 | Standalone costing and presentation-only team selection | `test_graph.py::test_observed_only_costing_and_v2_catalog`; `test_sdk.py::test_input_integrity_and_team_views` | Deployment and frontend checks are distinct from analytical completeness. |
 | Bundles, catalog and schema-one import | `test_bundles.py` and graph bundle/catalog tests | Round-trip preservation does not prove all required diagnostics exist. |
+| Effective rates, quantity bases and zero-weight completion | `test_aggregates.py` | Direct graph evidence for the new primitives; does not close population reconciliation or M/K/L gaps. |
+| Audited input exclusions and the 1% limit | `test_production_input.py` | Preprocessing evidence, separate from economic support diagnostics. |
+| Reports, signed colors, driver impacts and top-N views | `test_reporting.py` | Presentation of existing tables; not additional analytical validation. |
 | Complete support and movement summaries | No equivalent complete graph diagnostic contract/tests | Legacy diagnostics and root analytical tests; GAP-002. |
 | Independent template M/K/L and full validation ledger | No equivalent graph checks/ledger | Compatibility implementation; GAP-003. |
 | Offsetting population aggregate errors | The reproducible probe above passes incorrectly | Required future rejection test; GAP-001. |

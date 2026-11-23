@@ -43,10 +43,10 @@ and hours. These are separate state objects and, here, separate drivers.
 ## 2. Import the library
 
 Use a Python environment with the package installed. For a local
-installation:
+installation from the repository root:
 
 ```bash
-python -m pip install -e /home/rupilbo/driver_model/production
+python -m pip install -e ./production
 ```
 
 Then:
@@ -907,10 +907,7 @@ declaration:
 from pathlib import Path
 from labor_cost import export_run, publish_model
 
-publication_dir = Path(
-    "/home/rupilbo/driver_model/production/"
-    "runs/simple-payroll-1.0.0"
-)
+publication_dir = Path("runs/simple-payroll-1.0.0")
 
 publish_model(
     compiled,

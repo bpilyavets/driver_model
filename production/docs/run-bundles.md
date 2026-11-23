@@ -13,8 +13,8 @@ executable objects.
 - Dataset ID, version, full snapshot fingerprint and selected-period hash.
 - Periods, resolved exposure/completion policy, supplied references and
   explicit estimator settings.
-- Actual method details in `coalition_audit`; dependency versions and
-  full-workflow elapsed time.
+- Dependency versions and full-workflow elapsed time. Actual per-game
+  method details are in the separate `coalition_audit` table.
 - Table names mapped to generated Parquet filenames, hashes, row counts,
   column names, dtypes and object-column encoding.
 - Interpretation of source, normalized and attribution values.
@@ -41,7 +41,7 @@ without preparation metadata remain unchanged and readable.
 
 | Name | Meaning |
 | --- | --- |
-| `source_snapshot` | Exact source rows selected for the comparison. |
+| `source_snapshot` | Supplied analysis rows selected for the comparison; retained/reassigned rows when using `PreparedInput`. |
 | `canonical_data` | Validated inputs after mapping and normalization. |
 | `bridge` | Organizational leaf contributions; reconciles as a whole. |
 | `driver_bridge` | Organizational leaf contributions summed by driver. |
@@ -49,14 +49,16 @@ without preparation metadata remain unchanged and readable.
 | `local_bridges/<team>` | Separate bridge for that team's own cost change. |
 | `team_summary` | Version-dependent team endpoints; see the schemas below. |
 | `validation` | Recorded numerical checks and maximum absolute errors; currently not a complete ledger of all executed checks. |
-| `assumptions` | Inactive, copied and explicitly referenced economics. |
+| `assumptions` | Inactive, copied and explicitly referenced economics, plus declared zero-weight rate completion. |
 | `coalition_audit` | Actual estimators, budgets, counts, seeds and runtime. |
-| `diagnostics/*` | State factors, aligned inputs, profiles, matching/carry, exposure, fallbacks and game-local cell impacts. |
+| `diagnostics/*` | State factors, aggregate-factor evidence, aligned inputs, profiles, matching/carry, exposure, fallbacks and game-local cell impacts. |
+| `input_quality/*` | Only for prepared inputs: `source_snapshot`, `excluded_rows`, `reasons`, `summary`, `team_assignments`. |
 
 The following diagnostic tables are currently emitted by the graph API
 for both declaration schemas: `state_factors`, `aligned_inputs`,
 `membership_profiles`, `employee_alignment`, `exposure_allocation`,
-`fallbacks` and `cell_impacts`, all under the `diagnostics/` prefix.
+`fallbacks`, `aggregate_factors` and `cell_impacts`, all under the
+`diagnostics/` prefix. Tables may be empty when their primitives are unused.
 `diagnostics/state_factors` uses named coordinates for arbitrary dimensions.
 `diagnostics/membership_profiles` retains sparse indices, weights and
 conversion factors. `diagnostics/cell_impacts` contains actual sampled or
@@ -97,6 +99,12 @@ and [GAP-003](architecture-gaps.md#gap-003-validation-evidence).
 
 ## Units and serialization
 
+`result.table(name)` returns a pandas deep copy. Numeric/scalar table edits
+do not change the stored table, but nested Python objects in object-dtype
+cells are not recursively cloned. Treat nested diagnostic values as
+read-only or copy those objects before editing. Reports create their own
+copies, including nested object values.
+
 Currency is the input dataset currency; there is no exchange-rate
 conversion. Shares are signed ratios of the relevant net change and are
 undefined near zero. Explicit unit columns on bridge/hierarchy rows remain
@@ -115,6 +123,14 @@ The returned `AnalysisResult` has `states=None`; dashboard consumers need
 only tables and metadata. To recompute, compile the stored model, create a
 snapshot from `source_snapshot`, and use the stored settings. Source data
 outside the selected periods are not needed by this run.
+
+For a prepared run, this reconstructs the retained economic inputs but
+does not recreate the `PreparedInput` audit attachment. `load_run` preserves
+the existing audit without rerunning preparation. To create a new audited
+preparation, use the original selected rows in
+`input_quality/source_snapshot` with the recorded model, request and team
+policy. That selected subset cannot reconstruct a full original dataset
+fingerprint if the original snapshot also contained other periods.
 
 The optional [Plotly reporting layer](reporting.md) consumes a loaded
 `AnalysisResult` directly. It uses existing currency bridges and metadata;
